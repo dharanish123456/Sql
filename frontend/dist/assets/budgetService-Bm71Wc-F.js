@@ -1,0 +1,1 @@
+import{a as e}from"./apiClient-Bn4Q3uRe.js";const g={getBudgetExpenses(){return e.get("/budgets/expenses")},getBudgetRevenues(){return e.get("/budgets/revenues")},getBudgets(){return e.get("/budgets")}};export{g as b};
