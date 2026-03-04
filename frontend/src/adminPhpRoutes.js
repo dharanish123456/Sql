@@ -1144,6 +1144,14 @@
     component: "ChannelPartnersPage",
   },
   {
+    path: "channel-partners/create",
+    component: "CreateChannelPartnerPage",
+  },
+  {
+    path: "channel-partners/:id",
+    component: "ChannelPartnerEditPage",
+  },
+  {
     path: "primary-source",
     component: "PrimarySourcePage",
   },

@@ -724,7 +724,7 @@ const AttendanceAdminPage = () => {
 										<label className="form-label">Status</label>
 										<select className="form-select">
 											<option>Select</option>
-											<option selected>Present</option>
+											<option>Present</option>
 											<option>Absent</option>
 										</select>
 									</div>

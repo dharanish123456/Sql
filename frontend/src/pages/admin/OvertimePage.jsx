@@ -1,931 +1,607 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { getEmployees } from "../../api/employeesApi";
+import {
+  createOvertime,
+  deleteOvertime,
+  getOvertimes,
+  updateOvertime,
+} from "../../api/overtimeApi";
+import { extractApiErrorMessage } from "../../utils/errorMessage";
 
-const OvertimePage = () => {
-  return (
-    <>
-<div className="content">
-
-				
-				<div className="d-md-flex d-block align-items-center justify-content-between page-breadcrumb mb-3">
-					<div className="my-auto mb-2">
-						<h2 className="mb-1">Overtime</h2>
-						<nav>
-							<ol className="breadcrumb mb-0">
-								<li className="breadcrumb-item">
-									<Link to="/dashboard"><i className="ti ti-smart-home"></i></Link>
-								</li>
-								<li className="breadcrumb-item">
-									Employee
-								</li>
-								<li className="breadcrumb-item active" aria-current="page">Overtime</li>
-							</ol>
-						</nav>
-					</div>
-					<div className="d-flex my-xl-auto right-content align-items-center flex-wrap ">
-						<div className="me-2 mb-2">
-							<div className="dropdown">
-								<a href="javascript:void(0);" className="dropdown-toggle btn btn-white d-inline-flex align-items-center" data-bs-toggle="dropdown">
-									<i className="ti ti-file-export me-1"></i>Export
-								</a>
-								<ul className="dropdown-menu  dropdown-menu-end p-3">
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1"><i className="ti ti-file-type-pdf me-1"></i>Export as PDF</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1"><i className="ti ti-file-type-xls me-1"></i>Export as Excel </a>
-									</li>
-								</ul>
-							</div>
-						</div>
-						<div className="mb-2">
-							<a href="#" data-bs-toggle="modal" data-bs-target="#add_overtime" className="btn btn-primary d-flex align-items-center"><i className="ti ti-circle-plus me-2"></i>Add Overtime</a>
-						</div>
-						<div className="head-icons ms-2">
-							<a href="javascript:void(0);" className="" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-original-title="Collapse" id="collapse-header">
-								<i className="ti ti-chevrons-up"></i>
-							</a>
-						</div>
-					</div>
-				</div>
-				
-
-				
-				<div className="row">
-					<div className="col-xl-3 col-md-6">
-						<div className="card">
-							<div className="card-body">
-								<div className="d-flex align-items-center flex-wrap justify-content-between">
-									<div>
-										<p className="fs-12 fw-medium mb-0 text-gray-5">Overtime Employee</p>
-										<h4>12</h4>
-									</div>
-									<div>
-										<span className="p-2 br-10 bg-transparent-primary border border-primary d-flex align-items-center justify-content-center"><i className="ti ti-user-check text-primary fs-18"></i></span>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-					<div className="col-xl-3 col-md-6">
-						<div className="card">
-							<div className="card-body">
-								<div className="d-flex align-items-center flex-wrap justify-content-between">
-									<div>
-										<p className="fs-12 fw-medium mb-0 text-gray-5">Overtime Hours</p>
-										<h4>118</h4>
-									</div>
-									<div>
-										<span className="p-2 br-10 bg-pink-transparent border border-pink d-flex align-items-center justify-content-center"><i className="ti ti-user-edit text-pink fs-18"></i></span>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-					<div className="col-xl-3 col-md-6">
-						<div className="card">
-							<div className="card-body">
-								<div className="d-flex align-items-center flex-wrap justify-content-between">
-									<div>
-										<p className="fs-12 fw-medium mb-0 text-gray-5">Pending Request</p>
-										<h4>23</h4>
-									</div>
-									<div>
-										<span className="p-2 br-10 bg-transparent-purple border border-purple d-flex align-items-center justify-content-center"><i className="ti ti-user-exclamation text-purple fs-18"></i></span>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-					<div className="col-xl-3 col-md-6">
-						<div className="card">
-							<div className="card-body">
-								<div className="d-flex align-items-center flex-wrap justify-content-between">
-									<div>
-										<p className="fs-12 fw-medium mb-0 text-gray-5">Rejected</p>
-										<h4>5</h4>
-									</div>
-									<div>
-										<span className="p-2 br-10 bg-skyblue-transparent border border-skyblue d-flex align-items-center justify-content-center"><i className="ti ti-user-exclamation text-skyblue fs-18"></i></span>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-				
-
-				
-				<div className="card">
-					<div className="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
-						<h5>Overtime</h5>
-						<div className="d-flex my-xl-auto right-content align-items-center flex-wrap row-gap-3">
-							<div className="me-3">
-								<div className="input-icon-end position-relative">
-									<input type="text" className="form-control date-range bookingrange" placeholder="dd/mm/yyyy - dd/mm/yyyy" />
-									<span className="input-icon-addon">
-										<i className="ti ti-chevron-down"></i>
-									</span>
-								</div>
-							</div>
-							<div className="dropdown me-3">
-								<a href="javascript:void(0);" className="dropdown-toggle btn btn-white d-inline-flex align-items-center" data-bs-toggle="dropdown">
-									Employee
-								</a>
-								<ul className="dropdown-menu  dropdown-menu-end p-3">
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Anthony Lewis</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Brian Villalobos</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Harvey Smith</a>
-									</li>
-								</ul>
-							</div>
-							<div className="dropdown me-3">
-								<a href="javascript:void(0);" className="dropdown-toggle btn btn-white d-inline-flex align-items-center" data-bs-toggle="dropdown">
-									Project
-								</a>
-								<ul className="dropdown-menu  dropdown-menu-end p-3">
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Office Management</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Project Management</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Hospital Administration</a>
-									</li>
-								</ul>
-							</div>
-							<div className="dropdown me-3">
-								<a href="javascript:void(0);" className="dropdown-toggle btn btn-white d-inline-flex align-items-center" data-bs-toggle="dropdown">
-									Select Status
-								</a>
-								<ul className="dropdown-menu  dropdown-menu-end p-3">
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Accepted</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Rejected</a>
-									</li>
-								</ul>
-							</div>
-							<div className="dropdown">
-								<a href="javascript:void(0);" className="dropdown-toggle btn btn-white d-inline-flex align-items-center" data-bs-toggle="dropdown">
-									Sort By : Last 7 Days
-								</a>
-								<ul className="dropdown-menu  dropdown-menu-end p-3">
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Recently Added</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Ascending</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Desending</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Last Month</a>
-									</li>
-									<li>
-										<a href="javascript:void(0);" className="dropdown-item rounded-1">Last 7 Days</a>
-									</li>
-								</ul>
-							</div>
-						</div>
-					</div>
-					<div className="card-body p-0">
-						<div className="custom-datatable-filter table-responsive">
-							<table className="table datatable">
-								<thead className="thead-light">
-									<tr>
-										<th>Employee</th>
-										<th>Date </th>
-										<th>Overtime Hours</th>
-										<th>Project</th>
-										<th>Approved By</th>
-										<th>Status</th>
-										<th></th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-32.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Anthony Lewis</a></h6>
-													<span className="fs-12 fw-normal ">UI/UX Team</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											14 Jan 2024
-										</td>
-										<td>32</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Office Management </a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-39.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Michael Walker</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-09.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Brian Villalobos</a></h6>
-													<span className="fs-12 fw-normal ">Development</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											21 Jan 2024
-										</td>
-										<td>45</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Project Management</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-02.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Sophie Headrick</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-01.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Harvey Smith</a></h6>
-													<span className="fs-12 fw-normal ">HR</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											20 Feb 2024
-										</td>
-										<td>31</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Project Management</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-03.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Cameron Drake</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-33.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Stephan Peralt</a></h6>
-													<span className="fs-12 fw-normal ">Management</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											15 Mar 2024
-										</td>
-										<td>45</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Hospital Administration</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-04.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Doris Crowley</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-danger d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Rejected
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-34.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Doglas Martini</a></h6>
-													<span className="fs-12 fw-normal ">Development</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											12 Apr 2024
-										</td>
-										<td>36</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Office Management</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-06.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Thomas Bordelon</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-02.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Linda Ray</a></h6>
-													<span className="fs-12 fw-normal ">UI/UX Team</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											20 Apr 2024
-										</td>
-										<td>49</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Hospital Administration</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-06.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Kathleen Gutierrez</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-35.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Elliot Murray</a></h6>
-													<span className="fs-12 fw-normal ">Developer</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											06 Jul 2024
-										</td>
-										<td>57</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Video Calling App</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-07.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Bruce Wright</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-36.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Rebecca Smtih</a></h6>
-													<span className="fs-12 fw-normal ">UI/UX Team</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											02 Sep 2024
-										</td>
-										<td>21</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Office Management</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-09.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Estelle Morgan</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-danger d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Rejected
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-37.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Connie Waters</a></h6>
-													<span className="fs-12 fw-normal ">Management</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											15 Nov 2024
-										</td>
-										<td>32</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Project Management</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-10.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Stephen Dias</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/users/user-38.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Connie Waters</a></h6>
-													<span className="fs-12 fw-normal ">Management</span>
-												</div>
-											</div>
-										</td>
-										<td>
-											15 Nov 2024
-										</td>
-										<td>66</td>
-										<td>
-											<div className=" d-flex align-items-center">
-												<a href="#" className="fs-14 fw-medium text-gray-9 d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#overtime_details">Ware house developement</a>
-												<a href="#" className="ms-1" data-bs-toggle="tooltip" data-bs-placement="right" data-bs-title="Worked on the Management
-												design & Development"><i className="ti ti-info-circle text-info"></i></a>
-											</div>
-										</td>
-										<td>
-											<div className="d-flex align-items-center file-name-icon">
-												<a href="#" className="avatar avatar-md border avatar-rounded">
-													<img src="assets/img/reports/user-05.jpg" className="img-fluid" alt="img" />
-												</a>
-												<div className="ms-2">
-													<h6 className="fw-medium"><a href="#">Angela Thomas</a></h6>
-												</div>
-											</div>
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Accepted
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_overtime"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-								</tbody>
-							</table>
-						</div>
-					</div>
-				</div>
-				
-
-			</div>
-
-			
-
-		
-
-		
-		<div className="modal fade" id="add_overtime">
-			<div className="modal-dialog modal-lg">
-				<div className="modal-content">
-					<div className="modal-header">
-						<h4 className="modal-title">Add Overtime</h4>
-						<button type="button" className="btn-close custom-btn-close" data-bs-dismiss="modal" aria-label="Close">
-							<i className="ti ti-x"></i>
-						</button>
-					</div>
-					<form action="overtime.php">
-						<div className="modal-body pb-0">
-							<div className="row">
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Employee<span className="text-danger"> *</span></label>
-										<select className="form-select">
-											<option>Select</option>
-											<option>Anthony Lewis</option>
-											<option>Brian Villalobos</option>
-											<option>Harvey Smith</option>
-										</select>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Overtime date <span className="text-danger"> *</span></label>
-										<div className="input-icon-end position-relative">
-											<input type="text" className="form-control datetimepicker" placeholder="dd/mm/yyyy" />
-											<span className="input-icon-addon">
-												<i className="ti ti-calendar text-gray-7"></i>
-											</span>
-										</div>
-									</div>
-								</div>
-								<div className="col-md-6">
-									<div className="mb-3">
-										<label className="form-label">Overtime<span className="text-danger"> *</span></label>
-										<input type="text" className="form-control" />
-									</div>
-								</div>
-								<div className="col-md-6">
-									<div className="mb-3">
-										<label className="form-label">Remaining Hours<span className="text-danger"> *</span></label>
-										<input type="text" className="form-control" />
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Description</label>
-										<textarea className="form-control" rows="3"></textarea>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Status<span className="text-danger"> *</span></label>
-										<select className="form-select">
-											<option>Select</option>
-											<option>Accepted</option>
-											<option>Rejected</option>
-										</select>
-									</div>
-								</div>
-							</div>
-						</div>
-						<div className="modal-footer">
-							<button type="button" className="btn btn-light me-2" data-bs-dismiss="modal">Cancel</button>
-							<button type="submit" className="btn btn-primary">Add Overtime</button>
-						</div>
-					</form>
-				</div>
-			</div>
-		</div>
-		
-
-		
-		<div className="modal fade" id="edit_overtime">
-			<div className="modal-dialog modal-lg">
-				<div className="modal-content">
-					<div className="modal-header">
-						<h4 className="modal-title">Edit Overtime</h4>
-						<button type="button" className="btn-close custom-btn-close" data-bs-dismiss="modal" aria-label="Close">
-							<i className="ti ti-x"></i>
-						</button>
-					</div>
-					<form action="overtime.php">
-						<div className="modal-body pb-0">
-							<div className="row">
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Employee * <span className="text-danger"> *</span></label>
-										<select className="form-select">
-											<option>Select</option>
-											<option selected>Anthony Lewis</option>
-											<option>Brian Villalobos</option>
-											<option>Harvey Smith</option>
-										</select>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Overtime date <span className="text-danger"> *</span></label>
-										<div className="input-icon-end position-relative">
-											<input type="text" className="form-control datetimepicker" placeholder="dd/mm/yyyy" defaultValue="17-10-2024" />
-											<span className="input-icon-addon">
-												<i className="ti ti-calendar text-gray-7"></i>
-											</span>
-										</div>
-									</div>
-								</div>
-								<div className="col-md-6">
-									<div className="mb-3">
-										<label className="form-label">Overtime<span className="text-danger"> *</span></label>
-										<input type="text" className="form-control" defaultValue="8" />
-									</div>
-								</div>
-								<div className="col-md-6">
-									<div className="mb-3">
-										<label className="form-label">Remaining Hours<span className="text-danger"> *</span></label>
-										<input type="text" className="form-control" defaultValue="2" />
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Description</label>
-										<textarea className="form-control" rows="3"></textarea>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Status<span className="text-danger"> *</span></label>
-										<select className="form-select">
-											<option>Select</option>
-											<option selected>Accepted</option>
-											<option>Rejected</option>
-										</select>
-									</div>
-								</div>
-							</div>
-						</div>
-						<div className="modal-footer">
-							<button type="button" className="btn btn-light me-2" data-bs-dismiss="modal">Cancel</button>
-							<button type="submit" className="btn btn-primary">Add Overtime</button>
-						</div>
-					</form>
-				</div>
-			</div>
-		</div>
-		
-
-		
-		<div className="modal fade" id="overtime_details">
-			<div className="modal-dialog modal-dialog-centered modal-lg">
-				<div className="modal-content">
-					<div className="modal-header">
-						<h4 className="modal-title"> Overtime Details</h4>
-						<button type="button" className="btn-close custom-btn-close" data-bs-dismiss="modal" aria-label="Close">
-							<i className="ti ti-x"></i>
-						</button>
-					</div>
-					<form action="overtime.php">
-						<div className="modal-body pb-0">
-							<div className="row">
-								<div className="col-md-12">
-									<div className="mb-3">
-										<div className="p-3 mb-3 br-5 bg-transparent-light">
-											<div className="row">
-												<div className="col-md-4">
-													<div className="d-flex align-items-center file-name-icon">
-														<a href="#" className="avatar avatar-md border avatar-rounded">
-															<img src="assets/img/users/user-32.jpg" className="img-fluid" alt="img" />
-														</a>
-														<div className="ms-2">
-															<h6 className="fw-medium fs-14"><a href="#">Anthony Lewis</a></h6>
-															<span className="fs-12 fw-normal ">UI/UX Team</span>
-														</div>
-													</div>
-												</div>
-												<div className="col-md-4">
-													<div>
-														<p className="fs-14 fw-normal mb-1">Hours Worked</p>
-														<h6 className="fs-14 fw-medium">32</h6>
-													</div>
-												</div>
-												<div className="col-md-4">
-													<div>
-														<p className="fs-14 fw-normal mb-1">Date</p>
-														<h6 className="fs-14 fw-medium">15 Apr 2024</h6>
-													</div>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<h6 className="fs-14 fw-medium">Office Management</h6>
-										<p className="fs-12 fw-normal">Worked on the Management design & Development</p>
-									</div>
-								</div>
-								<div className="col-md-12">
-									<div className="mb-3">
-										<label className="form-label">Select Status <span className="text-danger"> *</span></label>
-										<select className="form-select">
-											<option>Select</option>
-											<option>Accepted</option>
-											<option>Rejected</option>
-										</select>
-									</div>
-								</div>
-							</div>
-						</div>
-						<div className="modal-footer">
-							<button type="button" className="btn btn-light me-2" data-bs-dismiss="modal">Cancel</button>
-							<button type="submit" className="btn btn-primary">Submit</button>
-						</div>
-					</form>
-				</div>
-			</div>
-		</div>
-		
-
-		
-		<div className="modal fade" id="delete_modal">
-			<div className="modal-dialog modal-dialog-centered">
-				<div className="modal-content">
-					<div className="modal-body text-center">
-						<span className="avatar avatar-xl bg-transparent-danger text-danger mb-3">
-							<i className="ti ti-trash-x fs-36"></i>
-						</span>
-						<h4 className="mb-1">Confirm Delete</h4>
-						<p className="mb-3">You want to delete all the marked items, this cant be undone once you delete.</p>
-						<div className="d-flex justify-content-center">
-							<a href="javascript:void(0);" className="btn btn-light me-3" data-bs-dismiss="modal">Cancel</a>
-							<a href="/overtime" className="btn btn-danger">Yes, Delete</a>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-		
-
-
-	
-
-	
-
-
-    </>
-  );
+const initialForm = {
+  employeeId: "",
+  overtimeDate: "",
+  overtimeHours: "",
+  remainingHours: "",
+  projectName: "",
+  approvedBy: "",
+  description: "",
+  status: "Pending",
 };
 
-export default OvertimePage;
+export default function OvertimePage() {
+  const [rows, setRows] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [form, setForm] = useState(initialForm);
+  const [editForm, setEditForm] = useState(initialForm);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await getOvertimes();
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setRows([]);
+      setError(extractApiErrorMessage(e, "Failed to load overtime"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const data = await getEmployees();
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setEmployees([]);
+      setError(extractApiErrorMessage(e, "Failed to load employees"));
+    }
+  };
+
+  useEffect(() => {
+    load();
+    loadEmployees();
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 2200);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const orderedRows = useMemo(
+    () => [...rows].sort((a, b) => String(b.overtimeDate || "").localeCompare(String(a.overtimeDate || ""))),
+    [rows],
+  );
+
+  const employeeOptions = useMemo(
+    () =>
+      (employees || [])
+        .map((e) => ({
+          id: e?.id,
+          name: e?.name || e?.employeeName || e?.fullName || "",
+          dept: e?.dept || e?.department || "",
+        }))
+        .filter((e) => e.id != null && e.name)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [employees],
+  );
+
+  const openAdd = () => {
+    setError("");
+    setNotice("");
+    setForm(initialForm);
+    setShowAddModal(true);
+  };
+
+  const openEdit = (row) => {
+    setError("");
+    setNotice("");
+    setEditForm({
+      employeeId: row?.employeeId ? String(row.employeeId) : "",
+      overtimeDate: row?.overtimeDate ? String(row.overtimeDate).slice(0, 10) : "",
+      overtimeHours: row?.overtimeHours != null ? String(row.overtimeHours) : "",
+      remainingHours: row?.remainingHours != null ? String(row.remainingHours) : "",
+      projectName: row?.projectName || "",
+      approvedBy: row?.approvedBy || "",
+      description: row?.description || "",
+      status: row?.status || "Pending",
+    });
+    setSelectedId(row?.id || null);
+    setShowEditModal(true);
+  };
+
+  const confirmDelete = (row) => {
+    setDeleteTarget(row || null);
+    setSelectedId(row?.id || null);
+    setShowDeleteModal(true);
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.employeeId || !form.overtimeDate || !form.overtimeHours) {
+      setError("Employee, overtime date and hours are required");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await createOvertime({
+        employeeId: Number(form.employeeId),
+        overtimeDate: form.overtimeDate || null,
+        overtimeHours: form.overtimeHours ? Number(form.overtimeHours) : null,
+        remainingHours: form.remainingHours ? Number(form.remainingHours) : null,
+        projectName: form.projectName?.trim() || "",
+        approvedBy: form.approvedBy?.trim() || "",
+        description: form.description?.trim() || "",
+        status: form.status || "Pending",
+      });
+      setForm(initialForm);
+      setNotice("Overtime added");
+      setShowAddModal(false);
+      await load();
+    } catch (e2) {
+      setError(extractApiErrorMessage(e2, "Failed to add overtime"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    if (!selectedId) return;
+    if (!editForm.employeeId || !editForm.overtimeDate || !editForm.overtimeHours) {
+      setError("Employee, overtime date and hours are required");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await updateOvertime(selectedId, {
+        employeeId: Number(editForm.employeeId),
+        overtimeDate: editForm.overtimeDate || null,
+        overtimeHours: editForm.overtimeHours ? Number(editForm.overtimeHours) : null,
+        remainingHours: editForm.remainingHours ? Number(editForm.remainingHours) : null,
+        projectName: editForm.projectName?.trim() || "",
+        approvedBy: editForm.approvedBy?.trim() || "",
+        description: editForm.description?.trim() || "",
+        status: editForm.status || "Pending",
+      });
+      setNotice("Overtime updated");
+      setShowEditModal(false);
+      setSelectedId(null);
+      await load();
+    } catch (e2) {
+      setError(extractApiErrorMessage(e2, "Failed to update overtime"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedId) return;
+    setSaving(true);
+    setError("");
+    try {
+      await deleteOvertime(selectedId);
+      setNotice("Overtime deleted");
+      setShowDeleteModal(false);
+      setSelectedId(null);
+      setDeleteTarget(null);
+      await load();
+    } catch (e2) {
+      setError(extractApiErrorMessage(e2, "Failed to delete overtime"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resolveEmployee = (row) => {
+    if (row?.employeeName) return { name: row.employeeName, dept: row.employeeDept || "" };
+    const match = employeeOptions.find((e) => e.id === row?.employeeId);
+    return match || { name: "-", dept: "" };
+  };
+
+  const renderStatus = (status) => {
+    const val = String(status || "Pending").toLowerCase();
+    if (val === "rejected") {
+      return (
+        <span className="badge badge-danger d-inline-flex align-items-center badge-xs">
+          <i className="ti ti-point-filled me-1"></i>Rejected
+        </span>
+      );
+    }
+    if (val === "accepted") {
+      return (
+        <span className="badge badge-success d-inline-flex align-items-center badge-xs">
+          <i className="ti ti-point-filled me-1"></i>Accepted
+        </span>
+      );
+    }
+    return (
+      <span className="badge badge-warning d-inline-flex align-items-center badge-xs">
+        <i className="ti ti-point-filled me-1"></i>Pending
+      </span>
+    );
+  };
+
+  return (
+    <>
+      <div className="content">
+        {notice && <div className="alert alert-success">{notice}</div>}
+        {error && <div className="alert alert-danger">{error}</div>}
+
+        <div className="d-md-flex d-block align-items-center justify-content-between page-breadcrumb mb-3">
+          <div className="my-auto mb-2">
+            <h2 className="mb-1">Overtime</h2>
+            <nav>
+              <ol className="breadcrumb mb-0">
+                <li className="breadcrumb-item">
+                  <Link to="/dashboard"><i className="ti ti-smart-home"></i></Link>
+                </li>
+                <li className="breadcrumb-item">Employee</li>
+                <li className="breadcrumb-item active" aria-current="page">Overtime</li>
+              </ol>
+            </nav>
+          </div>
+          <div className="d-flex my-xl-auto right-content align-items-center flex-wrap ">
+            <div className="mb-2">
+              <button type="button" className="btn btn-primary d-flex align-items-center" onClick={openAdd}>
+                <i className="ti ti-circle-plus me-2"></i>Add Overtime
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
+            <h5>Overtime</h5>
+          </div>
+          <div className="card-body p-0">
+            <div className="custom-datatable-filter table-responsive">
+              <table className="table">
+                <thead className="thead-light">
+                  <tr>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>Overtime Hours</th>
+                    <th>Project</th>
+                    <th>Approved By</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7}>Loading...</td>
+                    </tr>
+                  ) : orderedRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>No overtime records found</td>
+                    </tr>
+                  ) : (
+                    orderedRows.map((row) => {
+                      const emp = resolveEmployee(row);
+                      return (
+                        <tr key={row.id || `${row.employeeId || "emp"}-${row.overtimeDate || "date"}`}>
+                          <td>
+                            <div className="d-flex align-items-center file-name-icon">
+                              <div className="ms-2">
+                                <h6 className="fw-medium">{emp.name || "-"}</h6>
+                                <span className="fs-12 fw-normal ">{emp.dept || ""}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{row.overtimeDate || "-"}</td>
+                          <td>{row.overtimeHours ?? "-"}</td>
+                          <td>{row.projectName || "-"}</td>
+                          <td>{row.approvedBy || "-"}</td>
+                          <td>{renderStatus(row.status)}</td>
+                          <td>
+                            <div className="d-inline-flex gap-2">
+                              <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => openEdit(row)}>
+                                Edit
+                              </button>
+                              <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => confirmDelete(row)}>
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showAddModal && (
+        <>
+          <div className="modal fade show" style={{ display: "block" }} tabIndex="-1">
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h4 className="modal-title">Add Overtime</h4>
+                  <button type="button" className="btn-close custom-btn-close" onClick={() => setShowAddModal(false)}>
+                    <i className="ti ti-x"></i>
+                  </button>
+                </div>
+                <form onSubmit={handleAdd}>
+                  <div className="modal-body pb-0">
+                    {error && <div className="alert alert-danger">{error}</div>}
+                    <div className="row">
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Employee <span className="text-danger">*</span></label>
+                          <select
+                            className="form-select"
+                            value={form.employeeId}
+                            onChange={(e) => setForm((prev) => ({ ...prev, employeeId: e.target.value }))}
+                          >
+                            <option value="">Select</option>
+                            {employeeOptions.map((e) => (
+                              <option key={e.id} value={e.id}>{e.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Overtime Date <span className="text-danger">*</span></label>
+                          <input
+                            type="date"
+                            className="form-control"
+                            value={form.overtimeDate}
+                            onChange={(e) => setForm((prev) => ({ ...prev, overtimeDate: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Overtime Hours <span className="text-danger">*</span></label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={form.overtimeHours}
+                            onChange={(e) => setForm((prev) => ({ ...prev, overtimeHours: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Remaining Hours</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={form.remainingHours}
+                            onChange={(e) => setForm((prev) => ({ ...prev, remainingHours: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Project</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={form.projectName}
+                            onChange={(e) => setForm((prev) => ({ ...prev, projectName: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Approved By</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={form.approvedBy}
+                            onChange={(e) => setForm((prev) => ({ ...prev, approvedBy: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Description</label>
+                          <textarea
+                            className="form-control"
+                            rows="3"
+                            value={form.description}
+                            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Status</label>
+                          <select
+                            className="form-select"
+                            value={form.status}
+                            onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Accepted">Accepted</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-light me-2" onClick={() => setShowAddModal(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                      {saving ? "Adding..." : "Add Overtime"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
+
+      {showEditModal && (
+        <>
+          <div className="modal fade show" style={{ display: "block" }} tabIndex="-1">
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h4 className="modal-title">Edit Overtime</h4>
+                  <button type="button" className="btn-close custom-btn-close" onClick={() => setShowEditModal(false)}>
+                    <i className="ti ti-x"></i>
+                  </button>
+                </div>
+                <form onSubmit={handleEdit}>
+                  <div className="modal-body pb-0">
+                    {error && <div className="alert alert-danger">{error}</div>}
+                    <div className="row">
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Employee <span className="text-danger">*</span></label>
+                          <select
+                            className="form-select"
+                            value={editForm.employeeId}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, employeeId: e.target.value }))}
+                          >
+                            <option value="">Select</option>
+                            {employeeOptions.map((e) => (
+                              <option key={e.id} value={e.id}>{e.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Overtime Date <span className="text-danger">*</span></label>
+                          <input
+                            type="date"
+                            className="form-control"
+                            value={editForm.overtimeDate}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, overtimeDate: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Overtime Hours <span className="text-danger">*</span></label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={editForm.overtimeHours}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, overtimeHours: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label">Remaining Hours</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={editForm.remainingHours}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, remainingHours: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Project</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={editForm.projectName}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, projectName: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Approved By</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={editForm.approvedBy}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, approvedBy: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Description</label>
+                          <textarea
+                            className="form-control"
+                            rows="3"
+                            value={editForm.description}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-12">
+                        <div className="mb-3">
+                          <label className="form-label">Status</label>
+                          <select
+                            className="form-select"
+                            value={editForm.status}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Accepted">Accepted</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-light me-2" onClick={() => setShowEditModal(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                      {saving ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
+
+      {showDeleteModal && (
+        <>
+          <div className="modal fade show" style={{ display: "block" }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <div className="modal-body text-center">
+                  <span className="avatar avatar-xl bg-transparent-danger text-danger mb-3">
+                    <i className="ti ti-trash-x fs-36"></i>
+                  </span>
+                  <h4 className="mb-1">Confirm Delete</h4>
+                  <p className="mb-3">You want to delete this overtime, this cant be undone once you delete.</p>
+                  <div className="d-flex justify-content-center">
+                    <button type="button" className="btn btn-light me-3" onClick={() => setShowDeleteModal(false)}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={saving}>
+                      {saving ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
+    </>
+  );
+}

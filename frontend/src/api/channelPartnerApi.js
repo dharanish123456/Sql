@@ -20,6 +20,11 @@ export async function updateChannelPartner(id, payload) {
   return response?.data
 }
 
+export async function getChannelPartnerById(id) {
+  const response = await api.get(`/api/channel-partners/${id}`)
+  return response?.data || null
+}
+
 export async function getChannelPartnerAssignableOwners(id) {
   const response = await api.get(`/api/channel-partners/${id}/assignable-owners`)
   return Array.isArray(response?.data) ? response.data : []

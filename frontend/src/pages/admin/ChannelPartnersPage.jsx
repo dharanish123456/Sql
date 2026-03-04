@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   getChannelPartners,
   createChannelPartner,
@@ -126,9 +127,9 @@ function ChannelPartnersPage() {
               <h4 className="f-w-700 mb-0">Channel Partners</h4>
             </div>
             <div className="col-4 text-end">
-              <button className="btn btn-primary" onClick={openCreate}>
-                + Add Channel Partner
-              </button>
+              <Link className="btn btn-primary" to="/channel-partners/create">
+                Create Channel Partner
+              </Link>
             </div>
           </div>
         </div>
@@ -168,12 +169,12 @@ function ChannelPartnersPage() {
                       <td>{r.email || "-"}</td>
                       <td>{r.phone || r.mobile || "-"}</td>
                       <td>
-                        <button
+                        <Link
                           className="btn btn-sm btn-outline-primary me-2"
-                          onClick={() => openEdit(r)}
+                          to={`/channel-partners/${r.id}`}
                         >
                           Edit
-                        </button>
+                        </Link>
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => setPendingDelete(r)}
@@ -286,3 +287,4 @@ function ChannelPartnersPage() {
 }
 
 export default ChannelPartnersPage;
+

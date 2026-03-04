@@ -1,4 +1,4 @@
-﻿package com.nexorcrm.backend.repo;
+package com.nexorcrm.backend.repo;
 
 import com.nexorcrm.backend.entity.LeavePolicy;
 import org.springframework.data.jpa.repository.JpaRepository;

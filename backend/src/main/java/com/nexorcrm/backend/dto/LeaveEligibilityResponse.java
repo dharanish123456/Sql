@@ -1,4 +1,4 @@
-﻿package com.nexorcrm.backend.dto;
+package com.nexorcrm.backend.dto;
 
 import java.math.BigDecimal;
 

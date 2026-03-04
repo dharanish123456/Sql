@@ -1,5 +1,6 @@
 package com.nexorcrm.backend.service;
 
+import com.nexorcrm.backend.dto.ChannelPartnerMultipartRequest;
 import com.nexorcrm.backend.dto.ChannelPartnerOwnerOptionResponse;
 import com.nexorcrm.backend.dto.ChannelPartnerRequest;
 import com.nexorcrm.backend.dto.ChannelPartnerResponse;
@@ -15,7 +16,12 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -48,6 +54,13 @@ public class ChannelPartnerService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public ChannelPartnerResponse getById(Long id, String actorPrincipal) {
+        resolveActor(actorPrincipal);
+        ChannelPartner row = findChannelPartner(id);
+        return toResponse(row);
+    }
+
     public ChannelPartnerResponse create(ChannelPartnerRequest request, String actorPrincipal) {
         User actor = assertManageAllowed(actorPrincipal);
 
@@ -63,11 +76,38 @@ public class ChannelPartnerService {
         return toResponse(saved);
     }
 
+    public ChannelPartnerResponse createMultipart(ChannelPartnerMultipartRequest request, String actorPrincipal) {
+        User actor = assertManageAllowed(actorPrincipal);
+
+        ChannelPartner row = new ChannelPartner();
+        row.setCpId(generateCpId());
+        row.setLeadOwnerUserId(actor.getId());
+        row.setLeadOwnerUsername(actor.getUsername());
+        applyMultipartRequest(row, request);
+
+        ChannelPartner saved = channelPartnerRepository.save(row);
+        channelPartnerLogService.log(saved.getId(), "ChannelPartners Created", saved.getStatus(), actor.getUsername());
+        auditService.log("CHANNEL_PARTNER_CREATE", "Created channel partner", actor.getEmail());
+        return toResponse(saved);
+    }
+
     public ChannelPartnerResponse update(Long id, ChannelPartnerRequest request, String actorPrincipal) {
         User actor = assertManageAllowed(actorPrincipal);
 
         ChannelPartner row = findChannelPartner(id);
         applyRequest(row, request);
+
+        ChannelPartner saved = channelPartnerRepository.save(row);
+        channelPartnerLogService.log(saved.getId(), "ChannelPartners Updated", saved.getStatus(), actor.getUsername());
+        auditService.log("CHANNEL_PARTNER_UPDATE", "Updated channel partner", actor.getEmail());
+        return toResponse(saved);
+    }
+
+    public ChannelPartnerResponse updateMultipart(Long id, ChannelPartnerMultipartRequest request, String actorPrincipal) {
+        User actor = assertManageAllowed(actorPrincipal);
+
+        ChannelPartner row = findChannelPartner(id);
+        applyMultipartRequest(row, request);
 
         ChannelPartner saved = channelPartnerRepository.save(row);
         channelPartnerLogService.log(saved.getId(), "ChannelPartners Updated", saved.getStatus(), actor.getUsername());
@@ -158,6 +198,69 @@ public class ChannelPartnerService {
         row.setBeneficiaryName(trim(req.getBeneficiaryName()));
         row.setIfscCode(trim(req.getIfscCode()));
         row.setStatus(StringUtils.hasText(req.getStatus()) ? req.getStatus().trim() : "Registered");
+    }
+
+    private void applyMultipartRequest(ChannelPartner row, ChannelPartnerMultipartRequest req) {
+        String existingAadhaar = row.getAadhaarCopyName();
+        String existingPan = row.getPanCopyName();
+        String existingGst = row.getGstCopyName();
+        String existingRera = row.getReraCopyName();
+
+        ChannelPartnerRequest base = new ChannelPartnerRequest();
+        base.setChannelPartnerType(req.getChannelPartnerType());
+        base.setCompanyName(req.getCompanyName());
+        base.setPartnerName(req.getPartnerName());
+        base.setMobile(req.getMobile());
+        base.setOfficeLandlineNumber(req.getOfficeLandlineNumber());
+        base.setEmailAddress(req.getEmailAddress());
+        base.setCompanyRegistrationNumber(req.getCompanyRegistrationNumber());
+        base.setRegisteredAddress(req.getRegisteredAddress());
+        base.setCommunicationAddress(req.getCommunicationAddress());
+        base.setMessage(req.getMessage());
+        base.setWebsiteUrl(req.getWebsiteUrl());
+        base.setAadhaarNumber(req.getAadhaarNumber());
+        base.setPanCompany(req.getPanCompany());
+        base.setGstRegistrationNumber(req.getGstRegistrationNumber());
+        base.setReraRegistrationNumber(req.getReraRegistrationNumber());
+        base.setBeneficiaryBankName(req.getBeneficiaryBankName());
+        base.setBankAccountNo(req.getBankAccountNo());
+        base.setBeneficiaryName(req.getBeneficiaryName());
+        base.setIfscCode(req.getIfscCode());
+        base.setStatus(req.getStatus());
+        applyRequest(row, base);
+
+        String aadhaarName = storeFile(req.getAadhaarCopy(), "aadhaar");
+        if (aadhaarName != null) row.setAadhaarCopyName(aadhaarName);
+        else row.setAadhaarCopyName(existingAadhaar);
+        String panName = storeFile(req.getPanCopy(), "pan");
+        if (panName != null) row.setPanCopyName(panName);
+        else row.setPanCopyName(existingPan);
+        String gstName = storeFile(req.getGstCopy(), "gst");
+        if (gstName != null) row.setGstCopyName(gstName);
+        else row.setGstCopyName(existingGst);
+        String reraName = storeFile(req.getReraCopy(), "rera");
+        if (reraName != null) row.setReraCopyName(reraName);
+        else row.setReraCopyName(existingRera);
+    }
+
+    private String storeFile(MultipartFile file, String prefix) {
+        if (file == null || file.isEmpty()) return null;
+        try {
+            String original = file.getOriginalFilename();
+            String ext = null;
+            if (StringUtils.hasText(original) && original.contains(".")) {
+                ext = original.substring(original.lastIndexOf('.') + 1);
+            }
+            String name = prefix + "_" + UUID.randomUUID().toString().replace("-", "");
+            if (StringUtils.hasText(ext)) name += "." + ext.toLowerCase(Locale.ROOT);
+            Path dir = Paths.get("uploads", "channel-partners");
+            Files.createDirectories(dir);
+            Path target = dir.resolve(name);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            return name;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private User assertManageAllowed(String actorPrincipal) {

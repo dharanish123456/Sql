@@ -1,6 +1,7 @@
 package com.nexorcrm.backend.controller;
 
 import com.nexorcrm.backend.dto.ApiMessageResponse;
+import com.nexorcrm.backend.dto.ChannelPartnerMultipartRequest;
 import com.nexorcrm.backend.dto.ChannelPartnerOwnerOptionResponse;
 import com.nexorcrm.backend.dto.ChannelPartnerRequest;
 import com.nexorcrm.backend.dto.ChannelPartnerResponse;
@@ -9,6 +10,7 @@ import com.nexorcrm.backend.dto.UpdateChannelPartnerOwnerRequest;
 import com.nexorcrm.backend.service.ChannelPartnerService;
 import com.nexorcrm.backend.service.LeadService;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,10 +34,22 @@ public class ChannelPartnerController {
         return channelPartnerService.list(authentication.getName());
     }
 
+    @GetMapping("/{id}")
+    public ChannelPartnerResponse getById(@PathVariable("id") Long id,
+                                          Authentication authentication) {
+        return channelPartnerService.getById(id, authentication.getName());
+    }
+
     @PostMapping
     public ChannelPartnerResponse create(@Valid @RequestBody ChannelPartnerRequest request,
                                          Authentication authentication) {
         return channelPartnerService.create(request, authentication.getName());
+    }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ChannelPartnerResponse createMultipart(@Valid @ModelAttribute ChannelPartnerMultipartRequest request,
+                                                  Authentication authentication) {
+        return channelPartnerService.createMultipart(request, authentication.getName());
     }
 
     @PutMapping("/{id}")
@@ -43,6 +57,13 @@ public class ChannelPartnerController {
                                          @Valid @RequestBody ChannelPartnerRequest request,
                                          Authentication authentication) {
         return channelPartnerService.update(id, request, authentication.getName());
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ChannelPartnerResponse updateMultipart(@PathVariable("id") Long id,
+                                                  @Valid @ModelAttribute ChannelPartnerMultipartRequest request,
+                                                  Authentication authentication) {
+        return channelPartnerService.updateMultipart(id, request, authentication.getName());
     }
 
     @GetMapping("/{id}/assignable-owners")

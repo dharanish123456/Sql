@@ -1,4 +1,4 @@
-﻿package com.nexorcrm.backend.entity;
+package com.nexorcrm.backend.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
