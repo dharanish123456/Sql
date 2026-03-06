@@ -1,0 +1,99 @@
+﻿dProject Handoff Notes
+Date: 2026-02-26
+
+Current Objective
+- Continue legacy PHP -> React admin migration while keeping existing AdminLayout and Bootstrap classes intact.
+- Stabilize runtime behavior (no white screens), preserve sidebar UX, and keep route-level lazy loading/protection working.
+
+What Has Been Implemented
+1) Routing and architecture
+- PHP-like admin routes are mapped in src/adminPhpRoutes.js.
+- Routes are rendered from App.jsx with lazy loading + Suspense.
+- Admin pages are wrapped with ProtectedRoute(role="admin").
+- ErrorBoundary exists to prevent full app crashes.
+
+2) Data layer and async state
+- Service layer is in src/services/ (apiClient + per-domain services).
+- React Query is used for server state in migrated pages.
+- Mock data remains as placeholder/fallback in src/mock.
+
+3) Observability / UX
+- Logger utility used for centralized logging.
+- Global error UI components exist (PageLoader, ErrorState).
+- Route preloading/preload manager exists to warm lazy routes.
+
+Major Issues We Were Fixing
+1) Runtime crash pattern on several pages
+- Error seen: Cannot read properties of undefined (reading 'title')
+- Root cause: API payload shape mismatch; pages directly accessed data.header.title without guard.
+- Fix approach: normalize pageData with fallback to mock data and use safe derived values before render.
+- Already fixed pages include:
+  - VoiceCallPage
+  - OutgoingCallPage
+  - IncomingCallPage
+  - CallHistoryPage
+  - CalendarPage
+  - DealsDashboardPage was also reported and had same pattern risk.
+
+2) Sidebar dropdown collapsing after navigation
+- Symptom: selecting items (e.g., Dashboard/Email submenu entries) closes parent dropdown unexpectedly.
+- Root cause: duplicated links in sidebar HTML; active-link sync could pick a non-submenu duplicate.
+- Latest fix in src/utils/adminNavigation.js:
+  - Prefer visible matched links.
+  - Prefer deepest submenu match for active link.
+  - Keep ancestor submenu chain open.
+- This specifically addressed Email submenu collapse after click.
+
+Latest Concrete Change (just completed)
+- File changed: src/utils/adminNavigation.js
+- Added helper: getSubmenuDepth(link, container)
+- Updated active link selection logic to:
+  - filter visible matches
+  - pick deepest submenu link among matches
+- Result: when clicking Email page, correct parent dropdown remains open.
+
+Build Status
+- npm run build passes after latest change.
+
+Open Work / Next AI TODO
+1) Continue migration in batches of 5 pages
+- Convert remaining scaffold pages from legacy PHP content blocks:
+  <div class="page-wrapper"><div class="content"> ... </div></div>
+- Keep classes and layout structure unchanged.
+
+2) Harden all query-driven pages against undefined data
+- Search for direct risky accesses:
+  - data.header.title
+  - data.*.map without fallback arrays
+- Standardize each page:
+  - const pageData = data ?? mockData
+  - safe fields: pageTitle, breadcrumbs, arrays default []
+  - rendering guards:
+    if (isLoading && !data) return <PageLoader />;
+    if (error) return <ErrorState onRetry={refetch} />;
+
+3) Verify sidebar behavior across all dropdown groups
+- Validate Dashboard, Applications, Employees, Projects, Tickets and Email-related sections.
+
+4) Keep constraints
+- Do NOT modify AdminLayout.
+- Do NOT redesign UI.
+- Keep Bootstrap classes unchanged.
+- Keep service calls out of reusable UI components.
+
+Quick Validation Checklist
+- npm run build
+- Open admin dashboard + dropdown navigation paths
+- Confirm no runtime TypeError in console
+- Confirm no React key warnings for mapped lists
+
+Important Files
+- src/App.jsx
+- src/utils/adminNavigation.js
+- src/components/layout/Sidebar.jsx
+- src/services/apiClient.js
+- src/components/system/ErrorBoundary.jsx
+- src/components/common/PageLoader.jsx
+- src/components/common/ErrorState.jsx
+- src/mock/*
+- src/pages/admin/*

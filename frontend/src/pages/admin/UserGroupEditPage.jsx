@@ -7,6 +7,7 @@ import {
   getUserGroups,
   removeGroupMember,
   updateUserGroup,
+  updateGroupMemberPages,
 } from "../../api/userGroupApi";
 import {
   getDepartments,
@@ -18,6 +19,7 @@ import {
 } from "../../api/orgHierarchyApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
 import { useAuth } from "../../context/AuthContext";
+import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 
 const EMPTY_SCOPE = {
   institutionId: "",
@@ -38,6 +40,7 @@ export default function UserGroupEditPage() {
 
   const [group, setGroup] = useState(location.state?.group || null);
   const [form, setForm] = useState({ name: "", level: 0 });
+  const [groupPageKeys, setGroupPageKeys] = useState([]);
   const [scope, setScope] = useState(EMPTY_SCOPE);
   const [orgSelection, setOrgSelection] = useState(null);
   const [institutions, setInstitutions] = useState([]);
@@ -48,6 +51,8 @@ export default function UserGroupEditPage() {
   const [members, setMembers] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [memberSavingId, setMemberSavingId] = useState(null);
+  const [memberPageOverrides, setMemberPageOverrides] = useState({});
   const [loading, setLoading] = useState(false);
   const [orgLoading, setOrgLoading] = useState(false);
   const [error, setError] = useState("");
@@ -118,6 +123,7 @@ export default function UserGroupEditPage() {
     const loadGroup = async () => {
       if (group) {
         setForm({ name: group.name || "", level: Number(group.level || 0) });
+        setGroupPageKeys(Array.isArray(group.pageKeys) ? group.pageKeys : []);
         return;
       }
       setLoading(true);
@@ -131,6 +137,7 @@ export default function UserGroupEditPage() {
         }
         setGroup(found);
         setForm({ name: found.name || "", level: Number(found.level || 0) });
+        setGroupPageKeys(Array.isArray(found.pageKeys) ? found.pageKeys : []);
       } catch (e) {
         if (isMounted) setError(extractApiErrorMessage(e, "Failed to load group"));
       } finally {
@@ -217,6 +224,13 @@ export default function UserGroupEditPage() {
         ]);
         if (!isMounted) return;
         setMembers(Array.isArray(memberRows) ? memberRows : []);
+        const overrides = {};
+        (Array.isArray(memberRows) ? memberRows : []).forEach((member) => {
+          if (Array.isArray(member.pageKeys) && member.pageKeys.length > 0) {
+            overrides[member.userId] = member.pageKeys;
+          }
+        });
+        setMemberPageOverrides(overrides);
         setAssignableUsers(Array.isArray(userRows) ? userRows : []);
       } catch (e) {
         if (isMounted) setError(extractApiErrorMessage(e, "Failed to load members"));
@@ -365,7 +379,19 @@ export default function UserGroupEditPage() {
       getGroupMembers(group.id),
       getAssignableUsersForGroup(params),
     ]);
-    setMembers(Array.isArray(memberRows) ? memberRows : []);
+    const nextMembers = Array.isArray(memberRows) ? memberRows : [];
+    setMembers(nextMembers);
+    setMemberPageOverrides((prev) => {
+      const next = { ...prev };
+      nextMembers.forEach((member) => {
+        if (Array.isArray(member.pageKeys) && member.pageKeys.length > 0) {
+          next[member.userId] = member.pageKeys;
+        } else if (!next[member.userId]) {
+          delete next[member.userId];
+        }
+      });
+      return next;
+    });
     setAssignableUsers(Array.isArray(userRows) ? userRows : []);
   };
 
@@ -394,9 +420,13 @@ export default function UserGroupEditPage() {
         institutionType: selectedType.name,
         departmentName: selectedDepartment.name,
         teamNames: selectedTeams.map((team) => team.name),
-        pageKeys: group.pageKeys || [],
+        pageKeys: groupPageKeys,
       });
-      setGroup(updated);
+      const nextPageKeys = Array.isArray(updated.pageKeys)
+        ? updated.pageKeys
+        : groupPageKeys;
+      setGroup({ ...updated, pageKeys: nextPageKeys });
+      setGroupPageKeys(nextPageKeys);
       setNotice("Group updated");
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to update group"));
@@ -433,6 +463,44 @@ export default function UserGroupEditPage() {
       setError(extractApiErrorMessage(e, "Failed to remove member"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleGroupPageKey = (pageKey) => {
+    setGroupPageKeys((prev) => {
+      if (prev.includes(pageKey)) {
+        return prev.filter((key) => key !== pageKey);
+      }
+      return [...prev, pageKey];
+    });
+  };
+
+  const updateMemberPages = async (member, nextKeys) => {
+    if (!group?.id || !member?.userId) return;
+    setMemberSavingId(member.userId);
+    setError("");
+    try {
+      const updated = await updateGroupMemberPages(group.id, member.userId, nextKeys);
+      if (Array.isArray(updated) && updated.length > 0) {
+        setMembers(updated);
+      } else {
+        setMembers((prev) =>
+          prev.map((row) =>
+            String(row.userId) === String(member.userId)
+              ? { ...row, pageKeys: nextKeys }
+              : row,
+          ),
+        );
+      }
+      setMemberPageOverrides((prev) => ({
+        ...prev,
+        [member.userId]: nextKeys,
+      }));
+      setNotice("Member pages updated");
+    } catch (e) {
+      setError(extractApiErrorMessage(e, "Failed to update member pages"));
+    } finally {
+      setMemberSavingId(null);
     }
   };
 
@@ -595,6 +663,25 @@ export default function UserGroupEditPage() {
           <hr className="my-4" />
 
           <div className="mb-3">
+            <label className="form-label">CRM Page Visibility</label>
+            <div className="d-flex flex-wrap gap-3">
+              {CRM_PAGE_OPTIONS.map((page) => (
+                <label key={page.key} className="d-flex align-items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={groupPageKeys.includes(page.key)}
+                    onChange={() => toggleGroupPageKey(page.key)}
+                  />
+                  <span>{page.label}</span>
+                </label>
+              ))}
+            </div>
+            <small className="text-muted d-block mt-1">
+              Members can only be granted pages enabled for this group.
+            </small>
+          </div>
+
+          <div className="mb-3">
             <label className="form-label">Add Users</label>
             <div className="d-flex gap-2">
               <select
@@ -623,28 +710,70 @@ export default function UserGroupEditPage() {
                 <tr>
                   <th>Username</th>
                   <th>Role</th>
+                  <th>CRM Pages</th>
                   <th className="text-end">Remove</th>
                 </tr>
               </thead>
               <tbody>
                 {members.length === 0 ? (
-                  <tr><td colSpan={3}>No members</td></tr>
+                  <tr><td colSpan={4}>No members</td></tr>
                 ) : (
-                  members.map((member) => (
-                    <tr key={member.userId}>
-                      <td>{member.username || "-"}</td>
-                      <td>{member.role || "-"}</td>
-                      <td className="text-end">
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => handleRemoveMember(member.userId)}
-                          disabled={loading}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  members.map((member) => {
+                    const overridePages = memberPageOverrides[member.userId];
+                    const effectivePages =
+                      overridePages ??
+                      (Array.isArray(member.pageKeys) && member.pageKeys.length
+                        ? member.pageKeys
+                        : groupPageKeys);
+                    const availablePages = groupPageKeys;
+                    return (
+                      <tr key={member.userId}>
+                        <td>{member.username || "-"}</td>
+                        <td>{member.role || "-"}</td>
+                        <td>
+                          {availablePages.length === 0 ? (
+                            <span className="text-muted">No pages enabled</span>
+                          ) : (
+                            <div className="d-flex flex-wrap gap-2">
+                              {CRM_PAGE_OPTIONS.filter((page) =>
+                                availablePages.includes(page.key),
+                              ).map((page) => (
+                                <label
+                                  key={page.key}
+                                  className="d-flex align-items-center gap-1"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={effectivePages.includes(page.key)}
+                                    onChange={(e) => {
+                                      const base = Array.isArray(effectivePages)
+                                        ? effectivePages
+                                        : [];
+                                      const next = e.target.checked
+                                        ? [...base, page.key]
+                                        : base.filter((key) => key !== page.key);
+                                      updateMemberPages(member, Array.from(new Set(next)));
+                                    }}
+                                    disabled={memberSavingId === member.userId}
+                                  />
+                                  <span className="fs-12">{page.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="text-end">
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleRemoveMember(member.userId)}
+                            disabled={loading}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

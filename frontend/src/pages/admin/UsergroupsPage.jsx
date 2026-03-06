@@ -20,6 +20,7 @@ import {
   getUserOrgSelection,
 } from "../../api/orgHierarchyApi";
 import { useAuth } from "../../context/AuthContext";
+import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 
 const EMPTY_FORM = { name: "", level: 0 };
 const EMPTY_SCOPE = {
@@ -46,8 +47,10 @@ function UsergroupsPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [createPageKeys, setCreatePageKeys] = useState([]);
   const [editGroup, setEditGroup] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editPageKeys, setEditPageKeys] = useState([]);
   const [groupMembers, setGroupMembers] = useState([]);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -209,6 +212,7 @@ function UsergroupsPage() {
         institutionType: selectedType.name,
         departmentName: selectedDepartment.name,
         teamNames: selectedTeams.map((team) => team.name),
+        pageKeys: createPageKeys,
       });
       setNotice("User group created");
       setShowModal(false);
@@ -239,6 +243,7 @@ function UsergroupsPage() {
   const openEdit = async (group) => {
     setEditGroup(group);
     setEditForm({ name: group?.name || "", level: group?.level || 0 });
+    setEditPageKeys(Array.isArray(group?.pageKeys) ? group.pageKeys : []);
     setSelectedUserId("");
     setError("");
     setEditScope(EMPTY_SCOPE);
@@ -365,7 +370,7 @@ function UsergroupsPage() {
         institutionType: selectedType.name,
         departmentName: selectedDepartment.name,
         teamNames: selectedTeams.map((team) => team.name),
-        pageKeys: editGroup.pageKeys || [],
+        pageKeys: editPageKeys,
       });
       setNotice("Group updated");
       setEditGroup(null);
@@ -668,6 +673,7 @@ function UsergroupsPage() {
                 className="btn btn-primary"
                 onClick={() => {
                   setForm(EMPTY_FORM);
+                  setCreatePageKeys([]);
                   initCreateScope();
                   setShowModal(true);
                   setError("");
@@ -926,6 +932,27 @@ function UsergroupsPage() {
                       </small>
                     )}
                   </div>
+                  <div className="mb-3">
+                    <label className="form-label">CRM Page Visibility</label>
+                    <div className="d-flex flex-wrap gap-3">
+                      {CRM_PAGE_OPTIONS.map((page) => (
+                        <label key={page.key} className="d-flex align-items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={createPageKeys.includes(page.key)}
+                            onChange={() =>
+                              setCreatePageKeys((prev) =>
+                                prev.includes(page.key)
+                                  ? prev.filter((key) => key !== page.key)
+                                  : [...prev, page.key],
+                              )
+                            }
+                          />
+                          <span>{page.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="modal-footer">
                   <button
@@ -1181,6 +1208,27 @@ function UsergroupsPage() {
                         Manager can only keep their own team.
                       </small>
                     )}
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">CRM Page Visibility</label>
+                    <div className="d-flex flex-wrap gap-3">
+                      {CRM_PAGE_OPTIONS.map((page) => (
+                        <label key={page.key} className="d-flex align-items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={editPageKeys.includes(page.key)}
+                            onChange={() =>
+                              setEditPageKeys((prev) =>
+                                prev.includes(page.key)
+                                  ? prev.filter((key) => key !== page.key)
+                                  : [...prev, page.key],
+                              )
+                            }
+                          />
+                          <span>{page.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Add Users</label>

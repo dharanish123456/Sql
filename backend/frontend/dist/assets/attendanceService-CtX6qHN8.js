@@ -1,0 +1,1 @@
+import{a as e}from"./apiClient-Bn4Q3uRe.js";const n={getAttendanceAdmin(){return e.get("/attendance/admin")},getAttendanceEmployee(){return e.get("/attendance/employee")},getAttendanceReport(){return e.get("/attendance/report")}};export{n as a};

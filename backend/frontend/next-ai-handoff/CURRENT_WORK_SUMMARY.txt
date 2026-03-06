@@ -1,0 +1,5 @@
+﻿Current work summary (created on 2026-02-26):
+- Created a handoff folder named `next-ai-handoff` in the frontend project.
+- Created this note file to pass context to the next AI.
+- No code changes were made to the application.
+- User request completed: make one folder and one text file describing what we are doing currently.

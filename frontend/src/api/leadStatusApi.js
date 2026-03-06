@@ -1,4 +1,13 @@
-﻿import api from '../utils/api'
+import api from '../utils/api'
+
+export const DEFAULT_LEAD_STATUSES = [
+  'New Lead',
+  'Attempted',
+  'Interested',
+  'Rejected',
+  'Boq',
+  'Payment',
+]
 
 export async function getLeadStatuses() {
   const response = await api.get('/api/lead-statuses')

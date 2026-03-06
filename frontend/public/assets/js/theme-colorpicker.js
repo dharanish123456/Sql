@@ -183,6 +183,9 @@ $(document).ready(function(){
 				)}`
 				);
 				localStorage.removeItem('sidebarTheme');
+				if (typeof window.applySidebarTextContrast === "function") {
+					window.applySidebarTextContrast();
+				}
 			});
 			});
 			themeContainerBackground.appendChild(button);

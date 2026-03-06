@@ -5,8 +5,11 @@ import {
   getAuditLogs,
 } from "../../api/auditLogApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
+import { useAuth } from "../../context/AuthContext";
 
 export default function LogsPage() {
+  const { user } = useAuth();
+  const role = String(user?.role || "").toUpperCase();
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
@@ -35,7 +38,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     load(0, size);
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     if (!notice) return;
@@ -81,31 +84,33 @@ export default function LogsPage() {
       <div className="card mb-3">
         <div className="card-header d-flex align-items-center justify-content-between">
           <h4 className="mb-0">Audit Logs</h4>
-          <div className="d-flex align-items-center gap-2">
-            <div className="input-group" style={{ width: 220 }}>
-              <input
-                type="number"
-                min="1"
-                className="form-control"
-                value={olderThanDays}
-                onChange={(e) => setOlderThanDays(e.target.value)}
-              />
+          {role !== "EMPLOYEE" ? (
+            <div className="d-flex align-items-center gap-2">
+              <div className="input-group" style={{ width: 220 }}>
+                <input
+                  type="number"
+                  min="1"
+                  className="form-control"
+                  value={olderThanDays}
+                  onChange={(e) => setOlderThanDays(e.target.value)}
+                />
+                <button
+                  className="btn btn-outline-danger"
+                  onClick={handleDeleteOlder}
+                  disabled={loading}
+                >
+                  Delete Older
+                </button>
+              </div>
               <button
-                className="btn btn-outline-danger"
-                onClick={handleDeleteOlder}
+                className="btn btn-danger"
+                onClick={handleDeleteAll}
                 disabled={loading}
               >
-                Delete Older
+                Delete All
               </button>
             </div>
-            <button
-              className="btn btn-danger"
-              onClick={handleDeleteAll}
-              disabled={loading}
-            >
-              Delete All
-            </button>
-          </div>
+          ) : null}
         </div>
         <div className="card-body">
           <div className="d-flex align-items-center justify-content-between mb-3">

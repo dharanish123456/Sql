@@ -1,11 +1,14 @@
 import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "./layouts/AdminLayout";
+import CustomerLayout from "./layouts/CustomerLayout";
 import { adminPhpRoutes } from "./adminPhpRoutes";
 import PageLoader from "./components/common/PageLoader";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import LoginPage from "./pages/common/LoginPage";
 import UnauthorizedPage from "./pages/common/UnauthorizedPage";
+import CustomerChatPage from "./pages/customer/CustomerChatPage";
+import CustomerStatusPage from "./pages/customer/CustomerStatusPage";
 import RouteProgress, {
   beginRouteProgress,
   endRouteProgress,
@@ -64,7 +67,6 @@ const adminOnlyPaths = new Set([
   "security-settings",
   "session-settings",
   "user-settings",
-  "logs",
 ]);
 
 function RouteFallback() {
@@ -82,6 +84,9 @@ function RoleRedirect() {
   const role = String(user?.role || "").toUpperCase();
   if (role === "EMPLOYEE") {
     return <Navigate to="/employee-dashboard" replace />;
+  }
+  if (role === "CUSTOMER") {
+    return <Navigate to="/customer/chat" replace />;
   }
   return <Navigate to="/admin-dashboard" replace />;
 }
@@ -132,6 +137,24 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
+        <Route path="/customer" element={<CustomerLayout />}>
+          <Route
+            path="chat"
+            element={
+              <ProtectedRoute role="customer">
+                <CustomerChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="status"
+            element={
+              <ProtectedRoute role="customer">
+                <CustomerStatusPage />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
         <Route path="/" element={<AdminLayout />}>
           <Route index element={<Navigate to="/login" replace />} />
           {adminPhpRoutes.map((route) => (

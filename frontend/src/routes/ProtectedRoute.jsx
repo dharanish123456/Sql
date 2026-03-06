@@ -18,7 +18,11 @@ export default function ProtectedRoute({ children, role }) {
     const required = String(role).toUpperCase().replace(/^ROLE_/, "");
     const current = String(user?.role || "").toUpperCase().replace(/^ROLE_/, "");
     const adminEquivalent = ["ADMIN", "SUPER_ADMIN", "MANAGER"];
-    if (required === "ADMIN" && !adminEquivalent.includes(current)) {
+    if (required === "ADMIN") {
+      if (!adminEquivalent.includes(current)) {
+        return <Navigate to="/unauthorized" replace />;
+      }
+    } else if (current !== required) {
       return <Navigate to="/unauthorized" replace />;
     }
   }

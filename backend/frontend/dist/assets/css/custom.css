@@ -1,0 +1,584 @@
+@import url('https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css');
+
+.modal-header.bg-gradient-primary {
+    background: linear-gradient(135deg, #7a70ba, #a379e3);
+    color: #fff;
+    transition: all 0.4s ease;
+}
+
+
+.btn-gradient-primary {
+    background: linear-gradient(135deg, #7a70ba, #a379e3);
+    color: #fff;
+    border: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-gradient-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 18px rgba(122, 112, 186, 0.45);
+}
+
+
+.btn-animate:hover {
+    transform: translateY(-2px) scale(1.05);
+    transition: all 0.3s ease-in-out;
+}
+
+
+.form-control.border-primary {
+    border-width: 2px;
+    border-radius: 0.55rem;
+    transition: all 0.3s ease-in-out;
+}
+
+.form-control.border-primary:focus {
+    border-color: #7a70ba;
+    box-shadow: 0 0 12px rgba(122, 112, 186, 0.55);
+}
+
+.input-animate:focus {
+    transform: scale(1.02);
+}
+
+
+input.form-control.input-animate {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+
+    border-radius: 12px;
+    border: 2px solid transparent; /* transparent base border */
+    outline: none;
+
+    /* Gradient border using background-clip trick */
+    background: linear-gradient(#fff, #fff) padding-box, 
+                linear-gradient(135deg, #6a11cb, #2575fc) border-box;
+    -webkit-background-clip: padding-box, border-box;
+    background-clip: padding-box, border-box;
+
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+
+/* Focus effect */
+input.form-control.input-animate:focus {
+    box-shadow: 0 0 15px rgba(37, 117, 252, 0.4);
+}
+
+/* Placeholder */
+input.form-control.input-animate::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+
+
+.modal-content.shadow-lg {
+    box-shadow: 0 0 45px rgba(0, 0, 0, 0.25);
+}
+
+.modal-content.rounded-4 {
+    border-radius: 1rem;
+}
+
+
+.form-select {
+    height: 48px;
+    padding: 10px 42px 10px 14px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border-radius: 0.6rem;
+    border: 2px solid #7a70ba;
+    background-color: #fff;
+
+    /* Custom arrow */
+    background-image:
+        linear-gradient(45deg, transparent 50%, #7a70ba 50%),
+        linear-gradient(135deg, #7a70ba 50%, transparent 50%);
+    background-position:
+        calc(100% - 22px) 20px,
+        calc(100% - 16px) 20px;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+
+    transition: all 0.35s ease;
+}
+
+/* Hover */
+.form-select:hover {
+    border-color: #a379e3;
+    box-shadow: 0 0 14px rgba(163, 121, 227, 0.35);
+}
+
+/* Focus */
+.form-select:focus {
+    border-color: #7a70ba;
+    box-shadow: 0 0 18px rgba(122, 112, 186, 0.6);
+    transform: scale(1.02);
+    outline: none;
+}
+
+/* Disabled */
+.form-select:disabled {
+    background-color: #f3f3f8;
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
+.form-select.gradient {
+    background:
+        linear-gradient(135deg, rgba(122,112,186,0.08), rgba(163,121,227,0.15)),
+        #fff;
+}
+
+
+.form-group.floating-label {
+    position: relative;
+}
+
+.form-group.floating-label label {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    font-size: 0.8rem;
+    color: #888;
+    transform: translateY(-50%);
+    pointer-events: none;
+    background: #fff;
+    padding: 0 6px;
+    transition: all 0.25s ease;
+}
+
+.form-group.floating-label .form-select:focus + label,
+.form-group.floating-label .form-select:not([value=""]) + label {
+    top: -8px;
+    font-size: 0.7rem;
+    color: #7a70ba;
+}
+
+
+.form-select option {
+    font-weight: 500;
+    padding: 10px;
+}
+
+
+@keyframes selectPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(122,112,186,0.6);
+    }
+    100% {
+        box-shadow: 0 0 0 14px rgba(122,112,186,0);
+    }
+}
+
+.form-select:focus {
+    animation: selectPulse 0.6s ease-out;
+}
+
+#myModalLabel{
+    color: #fff;
+}
+
+/* ==================================================
+   DATATABLE BUTTONS – CLEAN PROFESSIONAL STYLE
+================================================== */
+
+
+
+/* ===== Customize Columns ===== */
+.buttons-colvis {
+    background: #eef2ff !important;
+    color: #3730a3 !important;
+    border-color: #c7d2fe !important;
+}
+
+.buttons-colvis:hover {
+    background: #e0e7ff !important;
+}
+
+/* Arrow */
+.dt-button-down-arrow {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+/* ===== Excel ===== */
+.buttons-excel {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border-color: #a7f3d0 !important;
+}
+
+.buttons-excel:hover {
+    background: #d1fae5 !important;
+}
+
+/* ===== CSV ===== */
+.buttons-csv {
+    background: #fff7ed !important;
+    color: #9a3412 !important;
+    border-color: #fed7aa !important;
+}
+
+.buttons-csv:hover {
+    background: #ffedd5 !important;
+}
+
+/* ===== Dropdown ===== */
+.dt-button-collection {
+    margin-top: 8px;
+    padding: 10px;
+    min-width: 240px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+    z-index: 9999 !important;
+}
+
+/* Column items */
+.dt-button-collection .dt-button {
+    width: 100%;
+    padding: 10px 14px 10px 38px !important;
+    margin-bottom: 6px;
+    /*border-radius: 8px !important;*/
+    background: #f9fafb !important;
+    color: #374151 !important;
+    border: 1px solid transparent !important;
+}
+
+/* Sidebar native scroll fallback for React render timing */
+.sidebar .sidebar-inner.slimscroll {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+}
+
+.sidebar .sidebar-inner.slimscroll .sidebar-menu {
+    margin-top: 66px;
+    padding: 0 0 16px;
+}
+
+/* In modern layout the logo row is hidden, so no extra top gap is needed */
+[data-layout="modern"] .sidebar .sidebar-inner.slimscroll {
+    top: 0;
+}
+
+[data-layout="modern"] .sidebar .sidebar-inner.slimscroll .sidebar-menu {
+    margin-top: 0;
+}
+
+@media (max-width: 991.98px) {
+    .sidebar .sidebar-inner.slimscroll {
+        top: 0;
+    }
+}
+
+/* Hover column */
+.dt-button-collection .dt-button:hover {
+    background: #eef2ff !important;
+    color: #1e3a8a !important;
+}
+
+/* Active column */
+.buttons-columnVisibility.dt-button-active {
+    background: #e0e7ff !important;
+    color: #1e3a8a !important;
+    font-weight: 700;
+}
+
+
+
+/* Overlay */
+.dt-button-background {
+    background: rgba(0, 0, 0, 0.15) !important;
+    display: block !important;
+}
+
+/* ===============================
+   SEARCH CONTAINER
+================================ */
+
+.dataTables_filter {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* Hide default "Search:" text */
+.dataTables_filter label {
+    font-size: 0;
+}
+
+/* ===============================
+   SEARCH INPUT
+================================ */
+
+.dataTables_filter input {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 36px 8px 14px !important;
+    border-radius: 10px !important;
+    border: 1px solid #c7d2fe !important;
+    background: #ffffff !important;
+    color: #1e293b !important;
+    width: 220px !important;
+    transition: all 0.25s ease !important;
+    outline: none !important;
+}
+
+/* Placeholder */
+.dataTables_filter input::placeholder {
+    color: #94a3b8;
+}
+
+/* Hover */
+.dataTables_filter input:hover {
+    border-color: #818cf8;
+}
+
+/* Focus */
+.dataTables_filter input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
+/* ===============================
+   SEARCH ICON (PURE CSS)
+================================ */
+
+.dataTables_filter {
+    position: relative;
+}
+
+.dataTables_filter::after {
+    content: "🔍";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+    color: #6366f1;
+    pointer-events: none;
+}
+
+/* ===============================
+   MOBILE RESPONSIVE
+================================ */
+
+@media (max-width: 768px) {
+
+    .dataTables_filter {
+        justify-content: center;
+        margin-top: 10px;
+    }
+
+    .dataTables_filter input {
+        width: 100%;
+        max-width: 320px !important;
+    }
+}
+
+
+
+/* ===============================
+   HEADER COLORS
+================================ */
+
+#leadexport thead th {
+    background: linear-gradient(180deg, #4f46e5, #4338ca);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border-right: 1px solid rgba(255,255,255,0.15);
+}
+
+/* ===============================
+   ROW COLORS
+================================ */
+
+#leadexport tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+
+#leadexport tbody tr:nth-child(odd) {
+    background-color: #ffffff;
+}
+
+#leadexport tbody tr:hover {
+    background: #eef2ff !important;
+    transition: 0.2s ease-in-out;
+}
+
+#leadexport tbody td {
+    font-size: 13px;
+    color: #1e293b;
+    vertical-align: middle;
+}
+
+/* ===============================
+   STATUS BADGES
+================================ */
+
+.status-text {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+/* New Lead */
+.status-text:contains("New Lead"),
+.status-new {
+    background: #dcfce7;
+    color: #166534;
+}
+
+/* BOQ */
+.status-text:contains("BOQ"),
+.status-boq {
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+/* ===============================
+   PHONE ICON
+================================ */
+
+.clicktocall i {
+    background: #22c55e;
+    color: #ffffff;
+    padding: 6px;
+    border-radius: 50%;
+    font-size: 12px;
+}
+
+.clicktocall:hover i {
+    background: #16a34a;
+}
+
+/* ===============================
+   EDIT ICON
+================================ */
+
+.btn-edit i {
+    color: #6366f1;
+    font-size: 14px;
+}
+
+.btn-edit:hover i {
+    color: #4338ca;
+}
+
+/* ===============================
+   DATATABLE BUTTONS
+================================ */
+
+.dt-buttons .dt-button {
+    /*border-radius: 8px !important;*/
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+    font-weight: 600;
+    border: none !important;
+    margin-right: 6px;
+}
+
+/* Column button */
+.dt-buttons .buttons-colvis {
+    background: #e0e7ff !important;
+    color: #3730a3 !important;
+}
+
+/* Excel */
+.dt-buttons .buttons-excel {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+}
+
+/* CSV */
+.dt-buttons .buttons-csv {
+    background: #ffedd5 !important;
+    color: #9a3412 !important;
+}
+
+/* ===============================
+   SEARCH BOX
+================================ */
+
+.dataTables_filter input {
+    border-radius: 8px;
+    border: 1px solid #c7d2fe;
+    padding: 6px 10px;
+    outline: none;
+}
+
+.dataTables_filter input:focus {
+    border-color: #6366f1;
+}
+
+/* ===============================
+   RESPONSIVE TOGGLE
+================================ */
+
+table.dataTable.dtr-inline.collapsed
+> tbody > tr > td.dtr-control::before {
+    background: #6366f1;
+    color: #ffffff;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    font-weight: bold;
+}
+
+/* ===============================
+   MOBILE CARD VIEW
+================================ */
+
+@media (max-width: 768px) {
+
+    table.dataTable > tbody > tr.child {
+        background: #eef2ff;
+    }
+
+    table.dataTable > tbody > tr.child ul.dtr-details li {
+        background: #ffffff;
+        border-left: 4px solid #6366f1;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        padding: 10px;
+    }
+
+    table.dataTable > tbody > tr.child span.dtr-title {
+        font-weight: 700;
+        color: #4f46e5;
+        font-size: 11px;
+    }
+
+    table.dataTable > tbody > tr.child span.dtr-data {
+        font-weight: 600;
+        color: #1e293b;
+    }
+}
+
+

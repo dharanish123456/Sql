@@ -1,6 +1,6 @@
 ﻿import { useEffect } from "react";
-import { loadLegacyUiScripts } from "../utils/loadLegacyUiScripts";
-import "../assets/css/LeadsDashboard.css";
+import { loadLegacyUiScripts } from "../../utils/loadLegacyUiScripts";
+import "../../assets/css/LeadsDashboard.css";
 
 function LeadsDashboardPage() {
   useEffect(() => {

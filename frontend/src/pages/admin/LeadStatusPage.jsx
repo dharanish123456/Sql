@@ -1,9 +1,10 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getLeadStatuses,
   createLeadStatus,
   updateLeadStatus,
   deleteLeadStatus,
+  DEFAULT_LEAD_STATUSES,
 } from "../../api/leadStatusApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
 
@@ -17,12 +18,37 @@ function LeadStatusPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [formValue, setFormValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const seededRef = useRef(false);
 
-  const load = async () => {
+    const load = async () => {
     setLoading(true);
     setError("");
     try {
-      setRows(await getLeadStatuses());
+      const current = await getLeadStatuses();
+      if (!seededRef.current) {
+        const existing = new Set(
+          (Array.isArray(current) ? current : [])
+            .map((row) =>
+              String(row?.leadStatus || row?.name || row?.status || "")
+                .trim()
+                .toLowerCase(),
+            )
+            .filter(Boolean),
+        );
+        const missing = DEFAULT_LEAD_STATUSES.filter(
+          (label) => !existing.has(label.toLowerCase()),
+        );
+        if (missing.length > 0) {
+          await Promise.all(missing.map((label) => createLeadStatus(label)));
+          seededRef.current = true;
+          setRows(await getLeadStatuses());
+        } else {
+          seededRef.current = true;
+          setRows(current);
+        }
+      } else {
+        setRows(current);
+      }
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to load"));
       setRows([]);
@@ -260,3 +286,8 @@ function LeadStatusPage() {
   );
 }
 export default LeadStatusPage;
+
+
+
+
+

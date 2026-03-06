@@ -1,8 +1,11 @@
 // Apply the saved theme settings from local storage
 document.querySelector("html").setAttribute("data-theme", localStorage.getItem('theme') || 'light');
-document.querySelector("html").setAttribute('data-sidebar', localStorage.getItem('sidebarTheme') || 'light');
+document.querySelector("html").setAttribute("data-theme-mode", localStorage.getItem('theme') || 'light');
+document.querySelector("html").setAttribute('data-sidebar', localStorage.getItem('sidebarTheme') || 'all');
+document.querySelector("html").style.setProperty("--sidebar-rgb", localStorage.getItem("sidebarRGB") || "15, 23, 42");
+document.querySelector("html").style.setProperty("--topbar-rgb", localStorage.getItem("topbarRGB") || "181, 192, 208");
 document.querySelector("html").setAttribute('data-color', localStorage.getItem('color') || 'primary');
-document.querySelector("html").setAttribute('data-topbar', localStorage.getItem('topbar') || 'white');
+document.querySelector("html").setAttribute('data-topbar', localStorage.getItem('topbar') || 'all');
 document.querySelector("html").setAttribute('data-layout', localStorage.getItem('layout') || 'default');
 document.querySelector("html").setAttribute('data-topbarcolor', localStorage.getItem('topbarcolor') || 'white');
 document.querySelector("html").setAttribute('data-card', localStorage.getItem('card') || 'bordered');
@@ -12,7 +15,7 @@ document.querySelector("html").setAttribute('data-loader', localStorage.getItem(
 
 let themesettings = `
 <div class="sidebar-contact ">
-    <div class="toggle-theme"  data-bs-toggle="offcanvas" data-bs-target="#theme-setting"><i class="fa fa-cog fa-w-16 fa-spin"></i></div>
+    <div class="toggle-theme"  data-bs-toggle="offcanvas" data-bs-target="#theme-setting"><i class="ti ti-settings"></i></div>
     </div>
     <div class="sidebar-themesettings offcanvas offcanvas-end" id="theme-setting">
     <div class="offcanvas-header d-flex align-items-center justify-content-between bg-dark">
@@ -57,34 +60,12 @@ let themesettings = `
                             </div>
                             <div class="col-4">
                                 <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="horizontalLayout" value="horizontal" >
-                                    <label for="horizontalLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/horizontal.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Horizontal</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
                                     <input type="radio" name="LayoutTheme" id="horizontal-singleLayout" value="horizontal-single" >
                                     <label for="horizontal-singleLayout">
                                         <span class="d-block mb-2 layout-img">
                                             <img src="assets/img/theme/horizontal-single.svg" alt="img">
                                         </span>                                    
                                         <span class="layout-type">Horizontal Single</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="detachedLayout" value="detached" >
-                                    <label for="detachedLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/horizontal-single.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Detached</span>
                                     </label>
                                 </div>
                             </div>
@@ -99,107 +80,11 @@ let themesettings = `
                                     </label>
                                 </div>
                             </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="without-headerLayout" value="without-header" >
-                                    <label for="without-headerLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/without-header.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Without Header</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="horizontal-overlayLayout" value="horizontal-overlay" >
-                                    <label for="horizontal-overlayLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/overlay.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Overlay</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="horizontal-sidemenuLayout" value="horizontal-sidemenu" >
-                                    <label for="horizontal-sidemenuLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/menu-aside.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Menu Aside</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="stackedLayout" value="stacked" >
-                                    <label for="stackedLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/stacked.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Menu Stacked</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="modernLayout" value="modern" >
-                                    <label for="modernLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/modern.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Modern</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <div class="theme-layout mb-3">
-                                    <input type="radio" name="LayoutTheme" id="transparentLayout" value="transparent" >
-                                    <label for="transparentLayout">
-                                        <span class="d-block mb-2 layout-img">
-                                            <img src="assets/img/theme/transparent.svg" alt="img">
-                                        </span>                                    
-                                        <span class="layout-type">Transparent</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-4">
-                                <a href="layout-rtl.php" class="theme-layout mb-3">
-                                    <span class="d-block mb-2 layout-img">
-                                        <img src="assets/img/theme/rtl.svg" alt="img">
-                                    </span>                                    
-                                    <span class="layout-type">RTL</span>
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div> 
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button text-dark fs-16" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarsetting" aria-expanded="true">
-                        Layout Width
-                    </button>
-                </h2>
-                <div id="sidebarsetting" class="accordion-collapse collapse show">
-                    <div class="accordion-body">
-                        <div class="d-flex align-items-center">
-                            <div class="theme-width m-1 me-2">
-                                <input type="radio" name="width" id="fluidWidth" value="fluid" checked>
-                                <label for="fluidWidth" class="d-block rounded fs-12">Fluid Layout
-                                </label>
-                            </div>
-                            <div class="theme-width m-1">
-                                <input type="radio" name="width" id="boxWidth" value="box">
-                                <label for="boxWidth" class="d-block rounded fs-12">Boxed Layout
-                                </label>
-                            </div>
-                        </div>  
-                    </div>
-                </div>
-            </div>
+            
             <div class="accordion-item">
                 <h2 class="accordion-header">
                     <button class="accordion-button text-dark fs-16" type="button" data-bs-toggle="collapse" data-bs-target="#cardsetting" aria-expanded="true" aria-controls="collapsecustomicon1One">
@@ -378,7 +263,7 @@ let themesettings = `
                     <div class="accordion-body pb-1">
                        <div class="d-flex align-items-center flex-wrap">
                             <div class="theme-colorselect mb-3 me-3">
-                                <input type="radio" name="topbar" id="whiteTopbar" value="white" checked>
+                                <input type="radio" name="topbar" id="whiteTopbar" value="white">
                                 <label for="whiteTopbar" class="white-topbar"></label>
                             </div>
                             <div class="theme-colorselect mb-3 me-3">
@@ -495,38 +380,56 @@ let themesettings = `
                        <div class="d-flex align-items-center flex-wrap">
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg1" value="sidebarbg1">
-                                <label for="sidebarBg1" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-01.svg" alt="img" class="rounded">
+                                <label for="sidebarBg1" class="d-block rounded pattern-1">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg2" value="sidebarbg2">
-                                <label for="sidebarBg2" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-02.svg" alt="img" class="rounded">
+                                <label for="sidebarBg2" class="d-block rounded pattern-2">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg3" value="sidebarbg3">
-                                <label for="sidebarBg3" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-03.svg" alt="img" class="rounded">
+                                <label for="sidebarBg3" class="d-block rounded pattern-3">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg4" value="sidebarbg4">
-                                <label for="sidebarBg4" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-04.svg" alt="img" class="rounded">
+                                <label for="sidebarBg4" class="d-block rounded pattern-4">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg5" value="sidebarbg5">
-                                <label for="sidebarBg5" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-05.svg" alt="img" class="rounded">
+                                <label for="sidebarBg5" class="d-block rounded pattern-5">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                             <div class="theme-sidebarbg me-3 mb-3">
                                 <input type="radio" name="sidebarbg" id="sidebarBg6" value="sidebarbg6">
-                                <label for="sidebarBg6" class="d-block rounded">
-                                    <img src="assets/img/theme/sidebar-bg-06.svg" alt="img" class="rounded">
+                                <label for="sidebarBg6" class="d-block rounded pattern-6">
+                                    <span class="sidebar-pattern"></span>
+                                </label>
+                            </div>
+                            <div class="theme-sidebarbg me-3 mb-3">
+                                <input type="radio" name="sidebarbg" id="sidebarBg7" value="sidebarbg7">
+                                <label for="sidebarBg7" class="d-block rounded pattern-7">
+                                    <span class="sidebar-pattern"></span>
+                                </label>
+                            </div>
+                            <div class="theme-sidebarbg me-3 mb-3">
+                                <input type="radio" name="sidebarbg" id="sidebarBg8" value="sidebarbg8">
+                                <label for="sidebarBg8" class="d-block rounded pattern-8">
+                                    <span class="sidebar-pattern"></span>
+                                </label>
+                            </div>
+                            <div class="theme-sidebarbg me-3 mb-3">
+                                <input type="radio" name="sidebarbg" id="sidebarBg9" value="sidebarbg9">
+                                <label for="sidebarBg9" class="d-block rounded pattern-9">
+                                    <span class="sidebar-pattern"></span>
                                 </label>
                             </div>
                         </div>
@@ -624,19 +527,21 @@ let themesettings = `
 		const lightModeToggle = document.getElementById('light-mode-toggle');
 		const darkMode = localStorage.getItem('darkMode');
 	
-		function enableDarkMode() {  
+        function enableDarkMode() {  
             document.documentElement.setAttribute('data-theme', 'dark');
-			darkModeToggle.classList.remove('activate');
-			lightModeToggle.classList.add('activate');
-			localStorage.setItem('darkMode', 'enabled');
-		}
+            document.documentElement.setAttribute('data-theme-mode', 'dark');
+            darkModeToggle.classList.remove('activate');
+            lightModeToggle.classList.add('activate');
+            localStorage.setItem('darkMode', 'enabled');
+        }
 	
-		function disableDarkMode() {
+        function disableDarkMode() {
             document.documentElement.setAttribute('data-theme', 'light');
-			lightModeToggle.classList.remove('activate');
-			darkModeToggle.classList.add('activate');
-			localStorage.removeItem('darkMode');
-		}
+            document.documentElement.setAttribute('data-theme-mode', 'light');
+            lightModeToggle.classList.remove('activate');
+            darkModeToggle.classList.add('activate');
+            localStorage.removeItem('darkMode');
+        }
 	
 		 // Check if darkModeToggle and lightModeToggle exist before adding event listeners
          if (darkModeToggle && lightModeToggle) {
@@ -662,22 +567,61 @@ let themesettings = `
         const topbarcolorRadios = document.querySelectorAll('input[name="topbarcolor"]');
         const cardRadios = document.querySelectorAll('input[name="card"]');
         const sizeRadios = document.querySelectorAll('input[name="size"]');
-        const widthRadios = document.querySelectorAll('input[name="width"]');
         const loaderRadios = document.querySelectorAll('input[name="loader"]');
         const topbarbgRadios = document.querySelectorAll('input[name="topbarbg"]');
         const resetButton = document.getElementById('resetbutton');
         const sidebarBgContainer = document.getElementById('sidebarbgContainer');
-        const sidebarElement = document.querySelector('.sidebar'); // Adjust this selector to match your sidebar element
-    
-        function setThemeAndSidebarTheme(theme, sidebarTheme, color, layout, topbar, topbarcolor, card, size, width, loader) {
-            // Check if the sidebar element exists
-            if (!sidebarElement) {
-                console.error('Sidebar element not found');
-                return;
+
+        function parseRgbString(value) {
+            if (!value) return null;
+            const match = value.match(/rgba?\(([^)]+)\)/i);
+            if (!match) return null;
+            const parts = match[1].split(',').map((part) => Number(part.trim()));
+            if (parts.length < 3 || parts.some((num) => Number.isNaN(num))) return null;
+            return parts.slice(0, 3);
+        }
+
+        function getSidebarBaseColor() {
+            const sidebar =
+                document.querySelector("#sidebar") ||
+                document.querySelector(".sidebar-horizontal.sidebar");
+            let color = sidebar ? getComputedStyle(sidebar).backgroundColor : "";
+            if (!color || color === "rgba(0, 0, 0, 0)" || color === "transparent") {
+                const cssVar = getComputedStyle(document.documentElement)
+                    .getPropertyValue("--sidebar-rgb")
+                    .trim();
+                if (cssVar) {
+                    color = `rgb(${cssVar})`;
+                }
             }
-    
+            return parseRgbString(color);
+        }
+
+        function applySidebarTextContrast() {
+            const rgb = getSidebarBaseColor();
+            if (!rgb) return;
+            const [r, g, b] = rgb.map((value) => value / 255);
+            const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const isLight = luminance > 0.58;
+            const root = document.documentElement;
+            if (isLight) {
+                root.style.setProperty("--sidebar-text-color", "#111827");
+                root.style.setProperty("--sidebar-text-muted", "#6B7280");
+                root.style.setProperty("--sidebar-icon-color", "#374151");
+                root.style.setProperty("--sidebar-arrow-color", "#6B7280");
+            } else {
+                root.style.setProperty("--sidebar-text-color", "#F3F4F6");
+                root.style.setProperty("--sidebar-text-muted", "#CBD5E1");
+                root.style.setProperty("--sidebar-icon-color", "#E2E8F0");
+                root.style.setProperty("--sidebar-arrow-color", "#CBD5E1");
+            }
+        }
+
+        window.applySidebarTextContrast = applySidebarTextContrast;
+        function setThemeAndSidebarTheme(theme, sidebarTheme, color, layout, topbar, topbarcolor, card, size, width, loader) {
             // Setting data attributes and classes
             document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.setAttribute('data-theme-mode', theme);
             document.documentElement.setAttribute('data-sidebar', sidebarTheme);
             document.documentElement.setAttribute('data-color', color);
             document.documentElement.setAttribute('data-layout', layout);
@@ -751,6 +695,8 @@ let themesettings = `
             localStorage.setItem('width', width);
             localStorage.setItem('loader', loader);
             //localStorage.removeItem('primaryRGB');
+
+            applySidebarTextContrast();
     
             // Show/hide sidebar background options based on layout selection
             if (layout === 'box' && sidebarBgContainer) {
@@ -784,12 +730,13 @@ let themesettings = `
             }
         }
     
-        function handleInputChange() {
+        function handleInputChange(event) {
+            const sourceName = event && event.target ? event.target.name : null;
             const theme = document.querySelector('input[name="theme"]:checked').value;
             const layout = document.querySelector('input[name="LayoutTheme"]:checked').value;
             const card = document.querySelector('input[name="card"]:checked').value;
             const size = document.querySelector('input[name="size"]:checked').value;
-            const width = document.querySelector('input[name="width"]:checked').value;
+            const width = localStorage.getItem('width') || 'fluid';
             const loader = document.querySelector('input[name="loader"]:checked').value;
 
             
@@ -805,32 +752,66 @@ let themesettings = `
                 color = 'all'
             }
 
-            if(document.querySelector('input[name="sidebar"]:checked') != null)
-            {
+            if (sourceName === 'sidebar') {
+                if (document.querySelector('input[name="sidebar"]:checked') != null) {
+                    sidebarTheme = document.querySelector('input[name="sidebar"]:checked').value;
+                } else {
+                    sidebarTheme = 'all';
+                }
+            } else if (localStorage.getItem('sidebarRGB')) {
+                sidebarTheme = 'all';
+            } else if (document.querySelector('input[name="sidebar"]:checked') != null) {
                 sidebarTheme = document.querySelector('input[name="sidebar"]:checked').value;
-            }else{
-                sidebarTheme = 'all'
+            } else {
+                sidebarTheme = 'all';
             }
 
-            if(document.querySelector('input[name="topbar"]:checked') != null)
-            {
+            if (sourceName === 'topbar') {
+                if (document.querySelector('input[name="topbar"]:checked') != null) {
+                    topbar = document.querySelector('input[name="topbar"]:checked').value;
+                } else {
+                    topbar = 'all';
+                }
+            } else if (localStorage.getItem('topbarRGB')) {
+                topbar = 'all';
+            } else if (document.querySelector('input[name="topbar"]:checked') != null) {
                 topbar = document.querySelector('input[name="topbar"]:checked').value;
-            }else{
-                topbar = 'all'
+            } else {
+                topbar = 'all';
             }
 
-            if(document.querySelector('input[name="topbarcolor"]:checked') != null)
-            {
+            if (sourceName === 'topbarcolor') {
+                if (document.querySelector('input[name="topbarcolor"]:checked') != null) {
+                    topbarcolor = document.querySelector('input[name="topbarcolor"]:checked').value;
+                } else {
+                    topbarcolor = 'all';
+                }
+            } else if (localStorage.getItem('topbarcolorRGB')) {
+                topbarcolor = 'all';
+            } else if (document.querySelector('input[name="topbarcolor"]:checked') != null) {
                 topbarcolor = document.querySelector('input[name="topbarcolor"]:checked').value;
-            }else{
-                topbarcolor = 'all'
+            } else {
+                topbarcolor = 'all';
+            }
+
+            if (sourceName === 'sidebar' && sidebarTheme !== 'all' && localStorage.getItem('sidebarRGB')) {
+                localStorage.removeItem('sidebarRGB');
+                document.documentElement.style.removeProperty('--sidebar-rgb');
+            }
+            if (sourceName === 'topbar' && topbar !== 'all' && localStorage.getItem('topbarRGB')) {
+                localStorage.removeItem('topbarRGB');
+                document.documentElement.style.removeProperty('--topbar-rgb');
+            }
+            if (sourceName === 'topbarcolor' && topbarcolor !== 'all' && localStorage.getItem('topbarcolorRGB')) {
+                localStorage.removeItem('topbarcolorRGB');
+                document.documentElement.style.removeProperty('--topbarcolor-rgb');
             }
     
             setThemeAndSidebarTheme(theme, sidebarTheme, color, layout, topbar, topbarcolor, card, size, width, loader);
         }
     
         function resetThemeAndSidebarThemeAndColorAndBg() {
-            setThemeAndSidebarTheme('light', 'light', 'primary', 'default', 'white', 'white', 'bordered', 'default', 'fluid', 'enable');
+            setThemeAndSidebarTheme('light', 'all', 'primary', 'default', 'all', 'white', 'bordered', 'default', 'fluid', 'enable');
             document.body.removeAttribute('data-sidebarbg');
             document.body.removeAttribute('data-topbarbg');
     
@@ -838,11 +819,10 @@ let themesettings = `
             document.getElementById('lightSidebar').checked = true;
             document.getElementById('primaryColor').checked = true;
             document.getElementById('defaultLayout').checked = true;
-            document.getElementById('whiteTopbar').checked = true;
+            document.getElementById('whiteTopbar').checked = false;
             document.getElementById('whiteTopbarcolor').checked = true;
             document.getElementById('borderedCard').checked = true;
             document.getElementById('defaultSize').checked = true;
-            document.getElementById('fluidWidth').checked = true;
             document.getElementById('enableLoader').checked = true;
     
             const checkedSidebarBg = document.querySelector('input[name="sidebarbg"]:checked');
@@ -851,6 +831,10 @@ let themesettings = `
             }
     
             localStorage.removeItem('sidebarBg');
+            localStorage.setItem('sidebarRGB', '15, 23, 42');
+            localStorage.setItem('topbarRGB', '181, 192, 208');
+            document.documentElement.style.setProperty('--sidebar-rgb', '15, 23, 42');
+            document.documentElement.style.setProperty('--topbar-rgb', '181, 192, 208');
 
             const checkedTopbarBg = document.querySelector('input[name="topbarbg"]:checked');
             if (checkedTopbarBg) {
@@ -869,7 +853,6 @@ let themesettings = `
         topbarcolorRadios.forEach(radio => radio.addEventListener('change', handleInputChange));
         cardRadios.forEach(radio => radio.addEventListener('change', handleInputChange));
         sizeRadios.forEach(radio => radio.addEventListener('change', handleInputChange));
-        widthRadios.forEach(radio => radio.addEventListener('change', handleInputChange));
         loaderRadios.forEach(radio => radio.addEventListener('change', handleInputChange));
         sidebarBgRadios.forEach(radio => radio.addEventListener('change', handleSidebarBgChange));
         topbarbgRadios.forEach(radio => radio.addEventListener('change', handleTopbarBgChange));
@@ -886,7 +869,23 @@ let themesettings = `
         const savedSize = localStorage.getItem('size') || 'default';
         const savedWidth = localStorage.getItem('width') || 'fluid';
         const savedLoader = localStorage.getItem('loader') || 'enable';
-        const savedSidebarBg = localStorage.getItem('sidebarBg') || null;
+        let savedSidebarBg = localStorage.getItem('sidebarBg') || null;
+        const allowedSidebarBg = new Set([
+            "sidebarbg1",
+            "sidebarbg2",
+            "sidebarbg3",
+            "sidebarbg4",
+            "sidebarbg5",
+            "sidebarbg6",
+            "sidebarbg7",
+            "sidebarbg8",
+            "sidebarbg9"
+        ]);
+        if (savedSidebarBg && !allowedSidebarBg.has(savedSidebarBg)) {
+            savedSidebarBg = null;
+            localStorage.removeItem("sidebarBg");
+            document.body.removeAttribute("data-sidebarbg");
+        }
         const savedTopbarBg = localStorage.getItem('topbarbg') || null;
 
         // setup theme color all
@@ -905,7 +904,9 @@ let themesettings = `
         const savedTopbarPickr = localStorage.getItem('topbarRGB') 
         if((savedTopbar == null) && (savedTopbarPickr == null))
         {
-            savedTopbar = 'white';
+            savedTopbar = 'all';
+            let html = document.querySelector("html");
+            html.style.setProperty("--topbar-rgb", "181, 192, 208");
         }else if((savedTopbarPickr != null) && (savedTopbar == null))
         {
             savedTopbar = 'all';
@@ -931,7 +932,9 @@ let themesettings = `
         const savedSidebarPickr = localStorage.getItem('sidebarRGB') 
         if((savedSidebarTheme == null) && (savedSidebarPickr == null))
         {
-            savedSidebarTheme = 'light';
+            savedSidebarTheme = 'all';
+            let html = document.querySelector("html");
+            html.style.setProperty("--sidebar-rgb", "15, 23, 42");
         } else if((savedSidebarPickr != null) && (savedSidebarTheme == null))
         {
            savedSidebarTheme = 'all';
@@ -979,9 +982,6 @@ let themesettings = `
         if (document.getElementById(`${savedSize}Size`)) {
             document.getElementById(`${savedSize}Size`).checked = true;
         }
-        if (document.getElementById(`${savedWidth}Width`)) {
-            document.getElementById(`${savedWidth}Width`).checked = true;
-        }
         if (document.getElementById(`${savedLoader}Loader`)) {
             document.getElementById(`${savedLoader}Loader`).checked = true;
         }
@@ -991,6 +991,8 @@ let themesettings = `
         if (savedTopbarBg && document.getElementById(`${savedTopbarBg}`)) {
             document.getElementById(`${savedTopbarBg}`).checked = true;
         }
+
+        applySidebarTextContrast();
     
         // Initially hide sidebar background options based on layout
         if (savedLayout !== 'box' && sidebarBgContainer) {

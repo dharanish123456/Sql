@@ -32,9 +32,31 @@ function parseTokenPayload(token) {
 
 function userFromToken(token, fallbackEmail = "", responseData = null) {
   const payload = parseTokenPayload(token);
+  const responseUser = responseData?.user || null;
+  const username =
+    responseUser?.username ||
+    responseData?.username ||
+    payload?.username ||
+    responseUser?.userName ||
+    responseData?.userName ||
+    payload?.userName ||
+    "";
+  const firstName =
+    responseUser?.firstName || responseData?.firstName || payload?.firstName || "";
+  const lastName =
+    responseUser?.lastName || responseData?.lastName || payload?.lastName || "";
   return {
-    id: payload?.userId || responseData?.userId || null,
-    email: payload?.email || payload?.sub || fallbackEmail || "",
+    id: payload?.userId || responseUser?.id || responseData?.userId || null,
+    email:
+      payload?.email ||
+      responseUser?.email ||
+      responseData?.email ||
+      payload?.sub ||
+      fallbackEmail ||
+      "",
+    username,
+    firstName,
+    lastName,
     role: normalizeRole(responseData?.role || payload?.role || "EMPLOYEE"),
     institution: responseData?.institution || "",
     institutionCategory: responseData?.institutionCategory || "",

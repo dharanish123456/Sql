@@ -73,11 +73,29 @@ function resolveRoutePathFromHref(href) {
     return null;
   }
 
+  const normalizeCandidate = (value) => {
+    const normalized = normalizeRoutePath(value);
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.endsWith(".php")) {
+      const withoutPhp = normalized.slice(0, -4);
+      if (routeToComponent.has(withoutPhp)) {
+        return withoutPhp;
+      }
+      if (withoutPhp === "dashboard" && routeToComponent.has("admin-dashboard")) {
+        return "admin-dashboard";
+      }
+      return withoutPhp;
+    }
+    return normalized;
+  };
+
   try {
     const url = new URL(rawHref, window.location.origin);
-    return normalizeRoutePath(url.pathname);
+    return normalizeCandidate(url.pathname);
   } catch {
-    return normalizeRoutePath(rawHref);
+    return normalizeCandidate(rawHref);
   }
 }
 
@@ -152,15 +170,6 @@ export function attachAdminNavigationHandlers(container, navigate, options = {})
     });
 
     const activeAncestors = new Set();
-    candidateLinks.forEach((activeLink) => {
-      let node = activeLink.parentElement;
-      while (node && container.contains(node)) {
-        if (node.classList.contains("submenu")) {
-          activeAncestors.add(node);
-        }
-        node = node.parentElement?.closest("li");
-      }
-    });
 
     container.querySelectorAll("li.submenu").forEach((submenuItem) => {
       if (!(submenuItem instanceof HTMLElement)) {
@@ -176,6 +185,8 @@ export function attachAdminNavigationHandlers(container, navigate, options = {})
       }
       if (shouldOpen && submenu instanceof HTMLElement) {
         submenu.style.display = "block";
+      } else if (submenu instanceof HTMLElement) {
+        submenu.style.display = "none";
       }
     });
   };
@@ -287,6 +298,12 @@ export function attachAdminNavigationHandlers(container, navigate, options = {})
 
     const routePath = preloadAdminRouteFromHref(href);
     if (!routePath) {
+      return;
+    }
+
+    const currentPath = normalizeRoutePath(window.location.pathname);
+    if (isSameRoute(currentPath, routePath)) {
+      event.preventDefault();
       return;
     }
 

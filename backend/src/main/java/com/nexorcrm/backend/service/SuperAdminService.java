@@ -15,6 +15,7 @@ import com.nexorcrm.backend.entity.User;
 import com.nexorcrm.backend.repo.AuditLogRepository;
 import com.nexorcrm.backend.repo.RefreshTokenRepository;
 import com.nexorcrm.backend.repo.UserRepository;
+import com.nexorcrm.backend.repo.UserGroupMemberRepository;
 import com.nexorcrm.backend.security.RolePermissionUtil;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.data.domain.Page;
@@ -44,6 +45,7 @@ public class SuperAdminService {
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserGroupMemberRepository userGroupMemberRepository;
     private final RefreshTokenService refreshTokenService;
     private final SecuritySettingsService securitySettingsService;
     private final AuditService auditService;
@@ -53,12 +55,14 @@ public class SuperAdminService {
     public SuperAdminService(UserRepository userRepository,
                              AuditLogRepository auditLogRepository,
                              RefreshTokenRepository refreshTokenRepository,
+                             UserGroupMemberRepository userGroupMemberRepository,
                              RefreshTokenService refreshTokenService,
                              SecuritySettingsService securitySettingsService,
                              AuditService auditService) {
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.userGroupMemberRepository = userGroupMemberRepository;
         this.refreshTokenService = refreshTokenService;
         this.securitySettingsService = securitySettingsService;
         this.auditService = auditService;
@@ -71,10 +75,10 @@ public class SuperAdminService {
             throw new IllegalStateException("This username is not allowed");
         }
 
-        if (userRepository.existsByUsername(username)) {
+        if (userRepository.existsByUsernameIgnoreCaseAndIsDeletedFalse(username)) {
             throw new IllegalStateException("Username already exists");
         }
-        if (userRepository.existsByEmail(email)) {
+        if (userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email)) {
             throw new IllegalStateException("Email already exists");
         }
 
@@ -107,10 +111,10 @@ public class SuperAdminService {
             throw new IllegalStateException("This username is not allowed");
         }
 
-        if (userRepository.existsByUsername(username)) {
+        if (userRepository.existsByUsernameIgnoreCaseAndIsDeletedFalse(username)) {
             throw new IllegalStateException("Username already exists");
         }
-        if (userRepository.existsByEmail(email)) {
+        if (userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email)) {
             throw new IllegalStateException("Email already exists");
         }
 
@@ -150,7 +154,7 @@ public class SuperAdminService {
         user.setDepartmentName(departmentName);
         user.setTeamName(teamName);
         user.setActivationStatus(ActivationStatus.PENDING);
-        user.setActive(true);
+        user.setActive(false);
         user.setForcePasswordChange(false);
         user.setCreatedBy(actor.getEmail());
 
@@ -265,13 +269,13 @@ public class SuperAdminService {
         String newPassword = StringUtils.hasText(request.getNewPassword()) ? request.getNewPassword().trim() : null;
         String confirmPassword = StringUtils.hasText(request.getConfirmPassword()) ? request.getConfirmPassword().trim() : null;
 
-        if (!target.getUsername().equalsIgnoreCase(username) && userRepository.existsByUsername(username)) {
+        if (!target.getUsername().equalsIgnoreCase(username) && userRepository.existsByUsernameIgnoreCaseAndIsDeletedFalse(username)) {
             throw new IllegalStateException("Username already exists");
         }
         if (!target.getUsername().equalsIgnoreCase(username) && securitySettingsService.isUsernameDisallowed(username)) {
             throw new IllegalStateException("This username is not allowed");
         }
-        if (!target.getEmail().equalsIgnoreCase(email) && userRepository.existsByEmail(email)) {
+        if (!target.getEmail().equalsIgnoreCase(email) && userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email)) {
             throw new IllegalStateException("Email already exists");
         }
         if ((newPassword != null || confirmPassword != null) && !StringUtils.hasText(newPassword)) {
@@ -310,6 +314,9 @@ public class SuperAdminService {
         assertCanEdit(actor, target, "You do not have permission to change this user status");
 
         target.setActive(active);
+        if (active) {
+            target.setActivationStatus(ActivationStatus.ACTIVE);
+        }
         User saved = userRepository.save(target);
         auditService.log("USER_STATUS_CHANGE", "Set active=" + active, target.getEmail());
         return toUserResponse(saved);
@@ -377,6 +384,8 @@ public class SuperAdminService {
         }
 
         String deletedEmail = target.getEmail();
+        refreshTokenRepository.deleteByUser(target);
+        userGroupMemberRepository.deleteAll(userGroupMemberRepository.findByUser_IdOrderByIdAsc(target.getId()));
         auditService.log("USER_DELETE", "Permanently deleted user account", deletedEmail);
         userRepository.delete(target);
     }
@@ -434,23 +443,30 @@ public class SuperAdminService {
         if (actor.getRole() == Role.SUPER_ADMIN) {
             return auditLogRepository.findAll(pageable).map(this::toAuditLogResponse);
         }
+        List<String> actorIds = List.of(
+                actor.getEmail().trim().toLowerCase(Locale.ROOT),
+                actor.getUsername().trim().toLowerCase(Locale.ROOT)
+        );
         if (actor.getRole() == Role.EMPLOYEE) {
-            List<String> actorIds = List.of(
-                    actor.getEmail().trim().toLowerCase(Locale.ROOT),
-                    actor.getUsername().trim().toLowerCase(Locale.ROOT)
-            );
+            return auditLogRepository.findVisibleForActorIds(actorIds, pageable).map(this::toAuditLogResponse);
+        }
+        if (actor.getRole() == Role.MANAGER) {
             return auditLogRepository.findVisibleForActorIds(actorIds, pageable).map(this::toAuditLogResponse);
         }
 
         List<Role> visibleRoles = RolePermissionUtil.getVisibleRoles(actor.getRole());
         if (actor.getRole() == Role.ADMIN) {
             assertActorHasDepartmentScope(actor);
-            return auditLogRepository.findVisibleForDepartmentScope(
-                    visibleRoles,
+            List<Role> roles = visibleRoles.stream()
+                    .filter(role -> role == Role.MANAGER || role == Role.EMPLOYEE)
+                    .toList();
+            return auditLogRepository.findVisibleForDepartmentScopeWithActor(
+                    roles,
                     actor.getInstitutionName(),
                     actor.getInstitutionCategory(),
                     actor.getInstitutionType(),
                     actor.getDepartmentName(),
+                    actorIds,
                     pageable
             ).map(this::toAuditLogResponse);
         }

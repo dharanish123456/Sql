@@ -29,10 +29,29 @@ export async function getLeadFilters() {
 export async function getAssignableLeadGroups() {
   const response = await api.get('/api/v1/leads/assignable-groups')
   const rows = Array.isArray(response?.data) ? response.data : []
+  const toPageKeys = (value) => {
+    if (Array.isArray(value)) return value.map((v) => String(v || '').trim()).filter(Boolean)
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+    }
+    return []
+  }
   return rows
     .map((row) => ({
       id: row?.id,
       name: row?.name || '',
+      pageKeys: toPageKeys(
+        row?.pageKeys ??
+          row?.page_keys ??
+          row?.pages ??
+          row?.pageVisibility ??
+          row?.visibilityPages,
+      ),
+      departmentName: row?.departmentName || '',
+      teamNames: Array.isArray(row?.teamNames) ? row.teamNames : [],
     }))
     .filter((row) => row.id != null && row.name)
 }
@@ -47,12 +66,109 @@ export async function updateLeadRowStatus(id, status) {
   return response?.data || {}
 }
 
-export async function getAssignableAllocators(leadId) {
-  const response = await api.get(`/api/v1/leads/${leadId}/assignable-allocators`)
+export async function getAssignableAllocators(leadId, params = {}) {
+  const response = await api.get(
+    `/api/v1/leads/${leadId}/assignable-allocators${buildQuery(params)}`,
+  )
   return Array.isArray(response?.data) ? response.data : []
 }
 
-export async function updateLeadAllocator(leadId, ownerUserId) {
-  const response = await api.patch(`/api/v1/leads/${leadId}/allocator`, { ownerUserId })
+export async function updateLeadAllocator(leadId, ownerUserId, targetGroupId) {
+  const payload = { ownerUserId }
+  if (targetGroupId !== undefined && targetGroupId !== null) {
+    payload.targetGroupId = targetGroupId
+  }
+  const response = await api.patch(`/api/v1/leads/${leadId}/allocator`, payload)
   return response?.data || {}
+}
+
+export async function updateLeadType(leadId, leadType) {
+  try {
+    const response = await api.patch(`/api/v1/leads/${leadId}/details`, { leadType })
+    return response?.data || {}
+  } catch (error) {
+    const response = await api.patch(`/api/v1/leads/${leadId}/type`, { leadType })
+    return response?.data || {}
+  }
+}
+
+export async function updateLeadDetails(leadId, payload = {}) {
+  const response = await api.patch(`/api/v1/leads/${leadId}/details`, payload)
+  return response?.data || {}
+}
+
+export async function deleteLead(leadId) {
+  const response = await api.patch(`/api/v1/leads/${leadId}/delete`)
+  return response?.data || {}
+}
+
+export async function getLeadLog(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/log`)
+  return Array.isArray(response?.data) ? response.data : []
+}
+
+export async function getLeadChatMessages(leadId, threadType) {
+  const response = await api.get(
+    `/api/v1/leads/${leadId}/chat/messages?threadType=${encodeURIComponent(threadType)}`,
+  )
+  return Array.isArray(response?.data) ? response.data : []
+}
+
+export async function sendLeadChatMessage(leadId, payload) {
+  const response = await api.post(`/api/v1/leads/${leadId}/chat/messages`, payload)
+  return response?.data || null
+}
+
+export async function sendLeadChatAttachment(leadId, { threadType, message, file }) {
+  const formData = new FormData()
+  if (threadType) {
+    formData.append("threadType", threadType)
+  }
+  if (message) {
+    formData.append("message", message)
+  }
+  if (file) {
+    formData.append("file", file)
+  }
+  const response = await api.post(`/api/v1/leads/${leadId}/chat/messages/file`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
+  return response?.data || null
+}
+
+export async function downloadLeadChatAttachment(leadId, messageId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/chat/messages/${messageId}/file`, {
+    responseType: "blob",
+  })
+  return response?.data || null
+}
+
+export async function getLeadChatNotifications(since) {
+  const query = since ? `?since=${encodeURIComponent(since)}` : ""
+  const response = await api.get(`/api/v1/leads/chat/notifications${query}`)
+  return Array.isArray(response?.data) ? response.data : []
+}
+
+export async function updateLeadBoq(leadId, { amount, notes, file } = {}) {
+  const formData = new FormData()
+  if (amount !== undefined && amount !== null && String(amount).trim() !== "") {
+    formData.append("amount", amount)
+  }
+  if (notes !== undefined && notes !== null) {
+    formData.append("notes", notes)
+  }
+  if (file) {
+    formData.append("file", file)
+  }
+  const response = await api.patch(`/api/v1/leads/${leadId}/boq`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
+  return response?.data || {}
+}
+
+export async function downloadLeadBoqFile(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/boq/file`, {
+    responseType: "blob",
+  })
+  return response?.data || null
 }

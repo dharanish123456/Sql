@@ -367,6 +367,9 @@ export default function UserEditPage() {
           </p>
         </div>
         <div className="d-flex flex-wrap gap-2">
+          <button className="btn btn-light" onClick={() => navigate(-1)}>
+            Back
+          </button>
           <button className="btn btn-outline-warning" onClick={handleToggleActive}>
             {user.active ? "Ban User" : "Activate User"}
           </button>
@@ -725,6 +728,16 @@ export default function UserEditPage() {
                               (current) => String(current.id) === String(group.id),
                             ),
                         )
+                        .filter((group) => {
+                          const userTeam = String(user?.teamName || "").trim().toLowerCase();
+                          const groupTeams = Array.isArray(group?.teamNames)
+                            ? group.teamNames.map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+                            : [];
+                          if (!userTeam) {
+                            return false;
+                          }
+                          return groupTeams.includes(userTeam);
+                        })
                         .map((group) => (
                           <option key={group.id} value={group.id}>
                             {group.name}

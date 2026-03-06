@@ -564,8 +564,24 @@
     component: "LeadsPage",
   },
   {
+    path: "leads/:id",
+    component: "LeadEditPage",
+  },
+  {
+    path: "leads/:id/chat",
+    component: "LeadChatPage",
+  },
+  {
     path: "leads-dashboard",
     component: "LeadsDashboardPage",
+  },
+  {
+    path: "lead-chats",
+    component: "LeadChatsPage",
+  },
+  {
+    path: "rejected-leads",
+    component: "RejectedLeadsPage",
   },
   {
     path: "leave-report",
@@ -606,6 +622,10 @@
   {
     path: "logs",
     component: "LogsPage",
+  },
+  {
+    path: "flow",
+    component: "FlowPage",
   },
   {
     path: "maintenance-mode",

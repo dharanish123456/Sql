@@ -17,6 +17,7 @@ public final class RolePermissionUtil {
         HIERARCHY.put(Role.ADMIN, 3);
         HIERARCHY.put(Role.MANAGER, 2);
         HIERARCHY.put(Role.EMPLOYEE, 1);
+        HIERARCHY.put(Role.CUSTOMER, 0);
     }
 
     private RolePermissionUtil() {
@@ -41,10 +42,16 @@ public final class RolePermissionUtil {
         if (roleToAssign == Role.SUPER_ADMIN) {
             return false;
         }
+        if (roleToAssign == Role.CUSTOMER) {
+            return false;
+        }
         return isStrictlyHigher(actorRole, roleToAssign);
     }
 
     public static boolean canSeeInManagementList(Role actorRole, Role targetRole) {
+        if (targetRole == Role.CUSTOMER) {
+            return false;
+        }
         return isEqualOrHigher(actorRole, targetRole);
     }
 

@@ -1,19 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   createLead,
+  deleteLead,
   getAssignableLeadGroups,
   getLeadFilters,
   getLeads,
   updateLeadRowStatus,
 } from "../../api/leadsApi";
-import { getLeadStatuses } from "../../api/leadStatusApi";
+import { getLeadStatuses, DEFAULT_LEAD_STATUSES } from "../../api/leadStatusApi";
 import { getPrimarySources } from "../../api/primarySourceApi";
 import { getSecondarySources } from "../../api/secondarySourceApi";
 import { getTertiarySources } from "../../api/tertiarySourceApi";
 import { getProjects } from "../../api/projectApi";
 import { getChannelPartners } from "../../api/channelPartnerApi";
 import { getGroupMembers } from "../../api/userGroupApi";
+import { getUserGroups } from "../../api/userGroupApi";
+import { getLeadFlow } from "../../api/flowApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
+import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
+import { useAuth } from "../../context/AuthContext";
 
 const EMPTY_CREATE_FORM = {
   projectName: "",
@@ -144,6 +150,9 @@ function NoteGlyph({ size = 14, className = "" }) {
 }
 
 export default function LeadsPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = String(user?.role || "").toUpperCase();
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({
     search: "",
@@ -177,6 +186,7 @@ export default function LeadsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [createGroupMembers, setCreateGroupMembers] = useState([]);
+  const [flowRules, setFlowRules] = useState([]);
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusLead, setStatusLead] = useState(null);
@@ -220,8 +230,10 @@ export default function LeadsPage() {
           projects,
           cpRows,
           groups,
+          allGroups,
           filterPayload,
           leadStatuses,
+          flowPayload,
         ] = await Promise.all([
           getPrimarySources(),
           getSecondarySources(),
@@ -229,8 +241,10 @@ export default function LeadsPage() {
           getProjects(),
           getChannelPartners(),
           getAssignableLeadGroups(),
+          role === "EMPLOYEE" ? Promise.resolve([]) : getUserGroups(),
           getLeadFilters(),
           getLeadStatuses(),
+          getLeadFlow(),
         ]);
         if (!isMounted) return;
         setPrimaryOptions(
@@ -244,7 +258,28 @@ export default function LeadsPage() {
         );
         setProjectOptions(toProjectNames(projects));
         setChannelPartners(Array.isArray(cpRows) ? cpRows : []);
-        setGroupOptions(Array.isArray(groups) ? groups : []);
+        const assignable = Array.isArray(groups) ? groups : [];
+        if (role === "EMPLOYEE") {
+          setGroupOptions(assignable);
+        } else {
+          const byId = new Map(
+            (Array.isArray(allGroups) ? allGroups : []).map((g) => [
+              String(g.id),
+              g,
+            ]),
+          );
+          const mergedGroups = assignable.map((group) => {
+            const full = byId.get(String(group.id));
+            const pageKeys =
+              Array.isArray(group.pageKeys) && group.pageKeys.length > 0
+                ? group.pageKeys
+                : Array.isArray(full?.pageKeys)
+                  ? full.pageKeys
+                  : [];
+            return { ...group, pageKeys };
+          });
+          setGroupOptions(mergedGroups);
+        }
         setLeadFilters({
           projects: Array.isArray(filterPayload?.projects)
             ? filterPayload.projects
@@ -260,13 +295,18 @@ export default function LeadsPage() {
             : [],
           owners: Array.isArray(filterPayload?.owners) ? filterPayload.owners : [],
         });
+        const normalizedLeadStatuses = Array.isArray(leadStatuses)
+          ? leadStatuses
+              .map((item) => item?.leadStatus || item?.name || item?.status || "")
+              .filter(Boolean)
+              .filter((item) => !/site\s*visit/i.test(item))
+          : [];
         setLeadStatusOptions(
-          Array.isArray(leadStatuses)
-            ? leadStatuses
-                .map((item) => item?.leadStatus || item?.name || item?.status || "")
-                .filter(Boolean)
-            : [],
+          normalizedLeadStatuses.length
+            ? normalizedLeadStatuses
+            : DEFAULT_LEAD_STATUSES,
         );
+        setFlowRules(Array.isArray(flowPayload?.rules) ? flowPayload.rules : []);
       } catch (e) {
         if (!isMounted) return;
         setError(extractApiErrorMessage(e, "Failed to load lead options"));
@@ -276,7 +316,7 @@ export default function LeadsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     if (!notice) return;
@@ -288,6 +328,10 @@ export default function LeadsPage() {
     let isMounted = true;
     const loadCreateGroupMembers = async () => {
       if (!createForm.leadGroupId) {
+        setCreateGroupMembers([]);
+        return;
+      }
+      if (role === "EMPLOYEE") {
         setCreateGroupMembers([]);
         return;
       }
@@ -307,7 +351,7 @@ export default function LeadsPage() {
     return () => {
       isMounted = false;
     };
-  }, [createForm.leadGroupId]);
+  }, [createForm.leadGroupId, role]);
 
   const applyFilters = async () => {
     await loadLeads(filters);
@@ -334,6 +378,15 @@ export default function LeadsPage() {
     setError("");
   };
 
+  const leadPageKey = CRM_PAGE_OPTIONS.find((item) => item.key === "leads")?.key || "leads";
+  const leadEligibleGroups = useMemo(
+    () =>
+      groupOptions.filter((group) =>
+        Array.isArray(group.pageKeys) ? group.pageKeys.includes(leadPageKey) : false,
+      ),
+    [groupOptions, leadPageKey],
+  );
+
   const handleCreateLead = async () => {
     if (!createForm.name.trim() || !createForm.mobile.trim()) {
       setError("Name and mobile are required");
@@ -341,10 +394,6 @@ export default function LeadsPage() {
     }
     if (!createForm.primarySource.trim()) {
       setError("Primary source is required");
-      return;
-    }
-    if (!createForm.leadGroupId) {
-      setError("Lead Group is required");
       return;
     }
     if (
@@ -366,7 +415,9 @@ export default function LeadsPage() {
         secondarySource: createForm.secondarySource.trim() || null,
         tertiarySource: createForm.tertiarySource.trim() || null,
         projectName: createForm.projectName.trim() || null,
-        leadGroupId: Number(createForm.leadGroupId),
+        leadGroupId: createForm.leadGroupId
+          ? Number(createForm.leadGroupId)
+          : null,
       };
       if (createForm.channelPartnerId) {
         payload.channelPartnerId = Number(createForm.channelPartnerId);
@@ -384,7 +435,7 @@ export default function LeadsPage() {
 
   const openStatusModal = (lead) => {
     setStatusLead(lead);
-    setStatusValue(lead?.status || "");
+    setStatusValue("");
     setShowStatusModal(true);
     setError("");
   };
@@ -393,6 +444,13 @@ export default function LeadsPage() {
     if (!statusLead?.id) return;
     if (!statusValue) {
       setError("Please select a status");
+      return;
+    }
+    const nextKey = String(statusValue || "").trim().toLowerCase();
+    if (["attempted", "interested", "rejected", "allocate", "boq"].includes(nextKey)) {
+      setShowStatusModal(false);
+      setStatusLead(null);
+      navigate(`/leads/${statusLead.id}?status=${encodeURIComponent(statusValue)}`);
       return;
     }
     setSaving(true);
@@ -413,6 +471,58 @@ export default function LeadsPage() {
       setSaving(false);
     }
   };
+
+  const handleDeleteLead = async (lead) => {
+    if (!lead?.id) return;
+    const ok = window.confirm("Delete this lead?");
+    if (!ok) return;
+    setSaving(true);
+    setError("");
+    try {
+      await deleteLead(lead.id);
+      setRows((prev) => prev.filter((row) => String(row.id) !== String(lead.id)));
+      setNotice("Lead deleted");
+    } catch (e) {
+      setError(extractApiErrorMessage(e, "Failed to delete lead"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const orderedLeadStatuses = useMemo(() => {
+    const combined = [
+      ...DEFAULT_LEAD_STATUSES,
+      ...(leadStatusOptions || []),
+      ...(leadFilters.leadStatuses || []),
+    ];
+    const normalized = combined
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(normalized));
+  }, [leadStatusOptions, leadFilters.leadStatuses]);
+
+  const allowedStatusOptions = useMemo(() => {
+    const current = String(statusLead?.status || "").trim().toLowerCase();
+    if (!current) {
+      return orderedLeadStatuses;
+    }
+    const rule = Array.isArray(flowRules)
+      ? flowRules.find(
+          (r) =>
+            String(r?.status || "").trim().toLowerCase() === current,
+        )
+      : null;
+    const nextKeys = rule?.next ? Object.keys(rule.next) : [];
+    if (rule) {
+      if (!nextKeys || nextKeys.length === 0) {
+        return [];
+      }
+      return nextKeys
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    }
+    return [];
+  }, [flowRules, orderedLeadStatuses, statusLead]);
 
   const openRemarkModal = (lead) => {
     setRemarkLead(lead);
@@ -745,10 +855,60 @@ export default function LeadsPage() {
                               borderRadius: 4,
                               border: "none",
                             }}
-                            onClick={() => openStatusModal(row)}
+                            onClick={() => navigate(`/leads/${row.id}`)}
                             title="Edit Lead"
                           >
                             <EditGlyph size={11} />
+                          </button>
+                          <button
+                            className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+                            style={{
+                              backgroundColor: "#e74c3c",
+                              color: "#fff",
+                              width: 24,
+                              height: 24,
+                              padding: 0,
+                              borderRadius: 4,
+                              border: "none",
+                            }}
+                            onClick={() => handleDeleteLead(row)}
+                            title="Delete Lead"
+                          >
+                            <i className="ti ti-trash" />
+                          </button>
+                          <button
+                            className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+                            style={{
+                              backgroundColor:
+                                String(row.status || "").trim().toLowerCase() === "boq"
+                                  ? "#20c997"
+                                  : "#adb5bd",
+                              color: "#fff",
+                              width: 24,
+                              height: 24,
+                              padding: 0,
+                              borderRadius: 4,
+                              border: "none",
+                              cursor:
+                                String(row.status || "").trim().toLowerCase() === "boq"
+                                  ? "pointer"
+                                  : "not-allowed",
+                              opacity:
+                                String(row.status || "").trim().toLowerCase() === "boq"
+                                  ? 1
+                                  : 0.6,
+                            }}
+                            onClick={() => {
+                              if (String(row.status || "").trim().toLowerCase() !== "boq") return;
+                              navigate(`/leads/${row.id}/chat`);
+                            }}
+                            title={
+                              String(row.status || "").trim().toLowerCase() === "boq"
+                                ? "Chat"
+                                : "Chat available after BOQ"
+                            }
+                          >
+                            <i className="ti ti-message" />
                           </button>
                         </div>
                       </td>
@@ -944,26 +1104,7 @@ export default function LeadsPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="col-md-6">
-                      <label className="form-label">Lead Group</label>
-                      <select
-                        className="form-select"
-                        value={createForm.leadGroupId}
-                        onChange={(e) =>
-                          setCreateForm((prev) => ({ ...prev, leadGroupId: e.target.value }))
-                        }
-                      >
-                        <option value="">Select Group</option>
-                        {groupOptions.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                      <small className="text-muted">
-                        Group members receive leads in round-robin order.
-                      </small>
-                    </div>
+                    <input type="hidden" value={createForm.leadGroupId} readOnly />
                     {createForm.primarySource.toLowerCase() === "channel partner" && (
                       <div className="col-md-6">
                         <label className="form-label">Channel Partner</label>
@@ -1049,6 +1190,20 @@ export default function LeadsPage() {
                   />
                 </div>
                 <div className="modal-body">
+                  {orderedLeadStatuses.length > 0 && (
+                    <div className="mb-3">
+                      <div className="d-flex flex-wrap gap-2">
+                        {allowedStatusOptions.map((item) => (
+                          <span
+                            key={item}
+                            className={`badge ${item === statusValue ? "bg-primary" : "bg-light text-dark"}`}
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mb-3">
                     <label className="form-label">Enquiry Status:</label>
                     <select
@@ -1057,12 +1212,7 @@ export default function LeadsPage() {
                       onChange={(e) => setStatusValue(e.target.value)}
                     >
                       <option value="">Select Status</option>
-                      {[
-                        ...new Set([
-                          ...(leadStatusOptions || []),
-                          ...(leadFilters.leadStatuses || []),
-                        ]),
-                      ].map((item) => (
+                      {allowedStatusOptions.map((item) => (
                         <option key={item} value={item}>
                           {item}
                         </option>
@@ -1140,3 +1290,4 @@ export default function LeadsPage() {
     </div>
   );
 }
+

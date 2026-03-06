@@ -374,7 +374,7 @@ public class UserGroupService {
         }
         User target = userRepository.findByIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
-        if (target.getActivationStatus() != ActivationStatus.ACTIVE) {
+        if (!target.isActive() && target.getActivationStatus() != ActivationStatus.ACTIVE) {
             throw new IllegalStateException("Only active users can be added");
         }
         boolean canSuperAdminAssignAdmin = actor.getRole() == Role.SUPER_ADMIN && target.getRole() == Role.ADMIN;

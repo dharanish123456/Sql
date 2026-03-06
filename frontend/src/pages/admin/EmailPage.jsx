@@ -1618,7 +1618,7 @@ const EmailPage = () => {
                   type="text"
                   data-role="tagsinput"
                   name="Label"
-                  value="Angela Thomas"
+                  defaultValue="Angela Thomas"
                 />
               </div>
               <div className="d-flex align-items-center email-cc">

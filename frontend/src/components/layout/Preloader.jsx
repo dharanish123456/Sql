@@ -8,7 +8,6 @@ const preloaderHtml = `<!--<div id="loader">-->
 
 <!--<style>-->
 <!--	:root {-->
-		/* 🌈 Rainbow colors for animation – customize here */
 <!--		--color-red: red;-->
 <!--		--color-orange: orange;-->
 <!--		--color-yellow: yellow;-->
@@ -45,7 +44,6 @@ const preloaderHtml = `<!--<div id="loader">-->
 <!--		display: inline-block;-->
 <!--	}-->
 
-	/* Assign delay index */
 <!--	.loading-text span:nth-child(1) {-->
 <!--		--i: 1;-->
 <!--	}-->

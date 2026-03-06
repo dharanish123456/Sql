@@ -27,6 +27,13 @@ public interface UserGroupMemberRepository extends JpaRepository<UserGroupMember
             ActivationStatus activationStatus
     );
 
+    List<UserGroupMember> findByGroup_IdAndUser_IdAndUser_RoleAndUser_ActivationStatusAndUser_ActiveTrueAndUser_IsDeletedFalse(
+            Long groupId,
+            Long userId,
+            Role role,
+            ActivationStatus activationStatus
+    );
+
     @Transactional
     void deleteByGroupAndUserId(UserGroup group, Long userId);
 }

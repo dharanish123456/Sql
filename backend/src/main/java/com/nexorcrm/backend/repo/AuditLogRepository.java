@@ -108,6 +108,73 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
                               AND lower(coalesce(u.institutionCategory, '')) = lower(:institutionCategory)
                               AND lower(coalesce(u.institutionType, '')) = lower(:institutionType)
                               AND lower(coalesce(u.departmentName, '')) = lower(:departmentName)
+                        )
+                        OR EXISTS (
+                            SELECT u.id FROM User u
+                            WHERE u.isDeleted = false
+                              AND lower(u.email) = lower(a.targetUser)
+                              AND u.role IN :roles
+                              AND lower(coalesce(u.institutionName, '')) = lower(:institutionName)
+                              AND lower(coalesce(u.institutionCategory, '')) = lower(:institutionCategory)
+                              AND lower(coalesce(u.institutionType, '')) = lower(:institutionType)
+                              AND lower(coalesce(u.departmentName, '')) = lower(:departmentName)
+                        )
+                        OR lower(coalesce(a.performedBy, '')) IN :actorIds
+                        OR lower(coalesce(a.targetUser, '')) IN :actorIds
+                    )
+                    ORDER BY a.createdAt DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(a) FROM AuditLog a
+                    WHERE (
+                        EXISTS (
+                            SELECT u.id FROM User u
+                            WHERE u.isDeleted = false
+                              AND lower(u.email) = lower(a.performedBy)
+                              AND u.role IN :roles
+                              AND lower(coalesce(u.institutionName, '')) = lower(:institutionName)
+                              AND lower(coalesce(u.institutionCategory, '')) = lower(:institutionCategory)
+                              AND lower(coalesce(u.institutionType, '')) = lower(:institutionType)
+                              AND lower(coalesce(u.departmentName, '')) = lower(:departmentName)
+                        )
+                        OR EXISTS (
+                            SELECT u.id FROM User u
+                            WHERE u.isDeleted = false
+                              AND lower(u.email) = lower(a.targetUser)
+                              AND u.role IN :roles
+                              AND lower(coalesce(u.institutionName, '')) = lower(:institutionName)
+                              AND lower(coalesce(u.institutionCategory, '')) = lower(:institutionCategory)
+                              AND lower(coalesce(u.institutionType, '')) = lower(:institutionType)
+                              AND lower(coalesce(u.departmentName, '')) = lower(:departmentName)
+                        )
+                        OR lower(coalesce(a.performedBy, '')) IN :actorIds
+                        OR lower(coalesce(a.targetUser, '')) IN :actorIds
+                    )
+                    """
+    )
+    Page<AuditLog> findVisibleForDepartmentScopeWithActor(
+            @Param("roles") List<Role> roles,
+            @Param("institutionName") String institutionName,
+            @Param("institutionCategory") String institutionCategory,
+            @Param("institutionType") String institutionType,
+            @Param("departmentName") String departmentName,
+            @Param("actorIds") List<String> actorIds,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    SELECT a FROM AuditLog a
+                    WHERE (
+                        EXISTS (
+                            SELECT u.id FROM User u
+                            WHERE u.isDeleted = false
+                              AND lower(u.email) = lower(a.performedBy)
+                              AND u.role IN :roles
+                              AND lower(coalesce(u.institutionName, '')) = lower(:institutionName)
+                              AND lower(coalesce(u.institutionCategory, '')) = lower(:institutionCategory)
+                              AND lower(coalesce(u.institutionType, '')) = lower(:institutionType)
+                              AND lower(coalesce(u.departmentName, '')) = lower(:departmentName)
                               AND lower(coalesce(u.teamName, '')) = lower(:teamName)
                         )
                         OR EXISTS (

@@ -769,7 +769,7 @@ const ClientsPage = () => {
 														<div className="form-check form-check-md form-switch me-2">
 															<label className="form-check-label mt-0">
 																<input className="form-check-input me-2" type="checkbox"
-																	role="switch" checked />
+																	role="switch" defaultChecked />
 																Holidays
 															</label>
 														</div>
@@ -1405,7 +1405,7 @@ const ClientsPage = () => {
 														<div className="form-check form-check-md form-switch me-2">
 															<label className="form-check-label mt-0">
 																<input className="form-check-input me-2" type="checkbox"
-																	role="switch" checked />
+																	role="switch" defaultChecked />
 																Holidays
 															</label>
 														</div>
@@ -1453,7 +1453,7 @@ const ClientsPage = () => {
 													<td>
 														<div className="form-check form-check-md d-flex align-items-center">
 															<label className="form-check-label mt-0">
-																<input className="form-check-input" type="checkbox" checked />
+																<input className="form-check-input" type="checkbox" defaultChecked />
 																Export
 															</label>
 														</div>
@@ -1464,7 +1464,7 @@ const ClientsPage = () => {
 														<div className="form-check form-check-md form-switch me-2">
 															<label className="form-check-label mt-0">
 																<input className="form-check-input me-2" type="checkbox"
-																	role="switch" checked />
+																	role="switch" defaultChecked />
 																Leaves
 															</label>
 														</div>
@@ -1502,8 +1502,7 @@ const ClientsPage = () => {
 														</div>
 													</td>
 													<td>
-														<div className="form-check form-check-md d-flex align-items-center"
-															checked>
+														<div className="form-check form-check-md d-flex align-items-center">
 															<label className="form-check-label mt-0">
 																<input className="form-check-input" type="checkbox" />
 																Import
@@ -1615,7 +1614,7 @@ const ClientsPage = () => {
 													<td>
 														<div className="form-check form-check-md d-flex align-items-center">
 															<label className="form-check-label mt-0">
-																<input className="form-check-input" type="checkbox" checked />
+																<input className="form-check-input" type="checkbox" defaultChecked />
 																Delete
 															</label>
 														</div>
@@ -1674,7 +1673,7 @@ const ClientsPage = () => {
 													<td>
 														<div className="form-check form-check-md d-flex align-items-center">
 															<label className="form-check-label mt-0">
-																<input className="form-check-input" type="checkbox" checked />
+																<input className="form-check-input" type="checkbox" defaultChecked />
 																Delete
 															</label>
 														</div>
@@ -1725,7 +1724,7 @@ const ClientsPage = () => {
 													<td>
 														<div className="form-check form-check-md d-flex align-items-center">
 															<label className="form-check-label mt-0">
-																<input className="form-check-input" type="checkbox" checked />
+																<input className="form-check-input" type="checkbox" defaultChecked />
 																Create
 															</label>
 														</div>
@@ -1943,4 +1942,5 @@ const ClientsPage = () => {
 };
 
 export default ClientsPage;
+
 

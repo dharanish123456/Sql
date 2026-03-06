@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loginType, setLoginType] = useState("staff");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,6 +25,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
+      sessionStorage.setItem("lastLoginIdentifier", identifier.trim());
       const data = await login(identifier, password);
       if (data?.forcePasswordChange) {
         navigate("/force-change-password", { replace: true });
@@ -34,9 +36,14 @@ export default function LoginPage() {
         return;
       }
       const role = String(data?.user?.role || "").toUpperCase();
-      if (role === "EMPLOYEE") {
+      if (role === "CUSTOMER") {
+        sessionStorage.setItem("showWelcomeToast", "1");
+        navigate("/customer/chat", { replace: true });
+      } else if (role === "EMPLOYEE") {
+        sessionStorage.setItem("showWelcomeToast", "1");
         navigate("/employee-dashboard", { replace: true });
       } else {
+        sessionStorage.setItem("showWelcomeToast", "1");
         navigate("/admin-dashboard", { replace: true });
       }
     } catch (err) {
@@ -61,7 +68,11 @@ export default function LoginPage() {
                 <i className="ti ti-user" />
                 <input
                   type="text"
-                  placeholder="Username or Email"
+                  placeholder={
+                    loginType === "customer"
+                      ? "Customer Email"
+                      : "Username or Email"
+                  }
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   autoComplete="username"
@@ -123,6 +134,34 @@ export default function LoginPage() {
               {error && (
                 <div className="alert alert-danger py-2 mt-2">{error}</div>
               )}
+              <div className="d-flex gap-3 mt-2 mb-2">
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="radio"
+                    name="loginType"
+                    id="loginStaff"
+                    checked={loginType === "staff"}
+                    onChange={() => setLoginType("staff")}
+                  />
+                  <label className="form-check-label" htmlFor="loginStaff">
+                    Employee/Admin
+                  </label>
+                </div>
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="radio"
+                    name="loginType"
+                    id="loginCustomer"
+                    checked={loginType === "customer"}
+                    onChange={() => setLoginType("customer")}
+                  />
+                  <label className="form-check-label" htmlFor="loginCustomer">
+                    Customer
+                  </label>
+                </div>
+              </div>
               <button className="auth-btn" type="submit" disabled={loading}>
                 {loading ? "Signing in..." : "Login"}
               </button>

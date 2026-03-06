@@ -1,11 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { attachAdminNavigationHandlers } from "../../utils/adminNavigation";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Sidebar() {
   const containerRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const role = String(user?.role || "").toUpperCase();
 
   useEffect(() => {
     return attachAdminNavigationHandlers(containerRef.current, navigate);
@@ -16,13 +19,13 @@ export default function Sidebar() {
       <div className="sidebar" id="sidebar">
         <div className="sidebar-logo">
           <a href="/admin-dashboard" className="logo logo-normal">
-            <img src="assets/img/logo.svg" alt="Logo" />
+            <img src="/assets/img/logo.svg" alt="Logo" />
           </a>
           <a href="/admin-dashboard" className="logo-small">
-            <img src="assets/img/logo-small.svg" alt="Logo" />
+            <img src="/assets/img/logo-small.svg" alt="Logo" />
           </a>
           <a href="/admin-dashboard" className="dark-logo">
-            <img src="assets/img/logo-white.svg" alt="Logo" />
+            <img src="/assets/img/logo-white.svg" alt="Logo" />
           </a>
         </div>
 
@@ -30,7 +33,7 @@ export default function Sidebar() {
           <div className="text-center rounded bg-light p-3 mb-4 user-profile">
             <div className="avatar avatar-lg online mb-3">
               <img
-                src="assets/img/profiles/avatar-02.jpg"
+                src="/assets/img/profiles/avatar-02.jpg"
                 alt="Img"
                 className="img-fluid rounded-circle"
               />
@@ -48,11 +51,13 @@ export default function Sidebar() {
                   Menu
                 </a>
               </li>
-              <li className="nav-item">
-                <a className="nav-link border-0" href="/chat">
-                  Chats
-                </a>
-              </li>
+              {(role === "MANAGER" || role === "ADMIN" || role === "SUPER_ADMIN") && (
+                <li className="nav-item">
+                  <a className="nav-link border-0" href="/lead-chats">
+                    Chats
+                  </a>
+                </li>
+              )}
               <li className="nav-item">
                 <a className="nav-link border-0" href="/email">
                   Inbox
@@ -65,7 +70,7 @@ export default function Sidebar() {
           <div className="text-center rounded bg-light p-2 mb-4 sidebar-profile d-flex align-items-center">
             <div className="avatar avatar-md onlin">
               <img
-                src="assets/img/profiles/avatar-02.jpg"
+                src="/assets/img/profiles/avatar-02.jpg"
                 alt="Img"
                 className="img-fluid rounded-circle"
               />
@@ -94,14 +99,16 @@ export default function Sidebar() {
                 <i className="ti ti-layout-grid-remove"></i>
               </a>
             </div>
-            <div className="me-3">
-              <a href="/chat" className="btn btn-menubar position-relative">
-                <i className="ti ti-brand-hipchat"></i>
-                <span className="badge bg-info rounded-pill d-flex align-items-center justify-content-center header-badge">
-                  5
-                </span>
-              </a>
-            </div>
+            {(role === "MANAGER" || role === "ADMIN" || role === "SUPER_ADMIN") && (
+              <div className="me-3">
+                <a href="/lead-chats" className="btn btn-menubar position-relative">
+                  <i className="ti ti-brand-hipchat"></i>
+                  <span className="badge bg-info rounded-pill d-flex align-items-center justify-content-center header-badge">
+                    5
+                  </span>
+                </a>
+              </div>
+            )}
             <div className="me-3 notification-item">
               <a
                 href="/activity"
@@ -165,11 +172,13 @@ export default function Sidebar() {
                       <span className="menu-arrow"></span>
                     </a>
                     <ul>
-                      <li>
-                        <a href="/chat" className="">
-                          Chat
-                        </a>
-                      </li>
+                      {(role === "MANAGER" || role === "ADMIN" || role === "SUPER_ADMIN") && (
+                        <li>
+                          <a href="/lead-chats" className="">
+                            Lead Chats
+                          </a>
+                        </li>
+                      )}
                       <li className="submenu submenu-two">
                         <a href="/call" className="">
                           Calls
@@ -329,6 +338,22 @@ export default function Sidebar() {
                       <span>Leads</span>
                     </a>
                   </li>
+                  {role === "MANAGER" || role === "ADMIN" || role === "SUPER_ADMIN" ? (
+                    <li className="">
+                      <a href="/lead-chats">
+                        <i className="ti ti-message"></i>
+                        <span>Lead Chats</span>
+                      </a>
+                    </li>
+                  ) : null}
+                  {role !== "EMPLOYEE" && (
+                    <li className="">
+                      <a href="/rejected-leads">
+                        <i className="ti ti-circle-x"></i>
+                        <span>Rejected Leads</span>
+                      </a>
+                    </li>
+                  )}
                   <li className="">
                     <a href="/pipeline">
                       <i className="ti ti-timeline-event-text"></i>
@@ -740,54 +765,72 @@ export default function Sidebar() {
               </li>
               <li>
                 <ul>
-                  <li>
-                    <a href="/useradmin">
-                      <i className="ti ti-users"></i>
-                      <span>User Admin</span>
-                    </a>
-                  </li>
+                  {role === "EMPLOYEE" ? (
+                    <li>
+                      <a href="/logs">
+                        <i className="ti ti-file-text"></i>
+                        <span>Logs</span>
+                      </a>
+                    </li>
+                  ) : (
+                    <>
+                      <li>
+                        <a href="/useradmin">
+                          <i className="ti ti-users"></i>
+                          <span>User Admin</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/usergroups">
-                      <i className="ti ti-users-group"></i>
-                      <span>User Groups</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/usergroups">
+                          <i className="ti ti-users-group"></i>
+                          <span>User Groups</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/registration">
-                      <i className="ti ti-user-plus"></i>
-                      <span>Registration</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/registration">
+                          <i className="ti ti-user-plus"></i>
+                          <span>Registration</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/session-settings">
-                      <i className="ti ti-clock"></i>
-                      <span>Session</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/session-settings">
+                          <i className="ti ti-clock"></i>
+                          <span>Session</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/user-settings">
-                      <i className="ti ti-settings"></i>
-                      <span>User Settings</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/user-settings">
+                          <i className="ti ti-settings"></i>
+                          <span>User Settings</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/security">
-                      <i className="ti ti-shield-lock"></i>
-                      <span>Security</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/security">
+                          <i className="ti ti-shield-lock"></i>
+                          <span>Security</span>
+                        </a>
+                      </li>
 
-                  <li>
-                    <a href="/logs">
-                      <i className="ti ti-file-text"></i>
-                      <span>Logs</span>
-                    </a>
-                  </li>
+                      <li>
+                        <a href="/flow">
+                          <i className="ti ti-share"></i>
+                          <span>Flow</span>
+                        </a>
+                      </li>
+
+                      <li>
+                        <a href="/logs">
+                          <i className="ti ti-file-text"></i>
+                          <span>Logs</span>
+                        </a>
+                      </li>
+                    </>
+                  )}
                 </ul>
               </li>
             </ul>
