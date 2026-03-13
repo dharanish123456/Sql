@@ -164,17 +164,14 @@ const LeaveTypePage = () => {
 													</tr>
 												</tbody>
 											</table>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-			
-		</div>
-		
+					</div> {/* table-responsive */}
+				</div> {/* card mb-0 */}
+			</div> {/* card-body p-0 */}
+			</div> {/* card-body */}
+			</div> {/* card */}
+			</div> {/* col-xl-9 */}
+		</div> {/* row */}
+		</div> {/* content */}
 
 		
 		<div className="modal fade" id="add_leaves">

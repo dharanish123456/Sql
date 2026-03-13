@@ -42,6 +42,13 @@ public class LeadChatMessage {
     @Column(name = "attachment_size")
     private Long attachmentSize;
 
+    // design choice data (action/notes) for messages in the design thread
+    @Column(name = "design_action", length = 50)
+    private String designAction;
+
+    @Column(name = "design_comment", columnDefinition = "text")
+    private String designComment;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -72,6 +79,10 @@ public class LeadChatMessage {
     public void setAttachmentType(String attachmentType) { this.attachmentType = attachmentType; }
     public Long getAttachmentSize() { return attachmentSize; }
     public void setAttachmentSize(Long attachmentSize) { this.attachmentSize = attachmentSize; }
+    public String getDesignAction() { return designAction; }
+    public void setDesignAction(String designAction) { this.designAction = designAction; }
+    public String getDesignComment() { return designComment; }
+    public void setDesignComment(String designComment) { this.designComment = designComment; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

@@ -196,8 +196,6 @@ const InvoiceSettingsPage = () => {
 					</div>
 				</div>
       </div>
-
-      </div>
 		{/* /Page Wrapper */}
     </>
   );

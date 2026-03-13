@@ -16,6 +16,7 @@ import com.nexorcrm.backend.repo.UserRepository;
 import com.nexorcrm.backend.repo.LeadRepository;
 import com.nexorcrm.backend.entity.Role;
 import jakarta.validation.Valid;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.core.io.Resource;
 
 import java.math.BigDecimal;
@@ -94,7 +96,22 @@ public class LeadController {
     public LeadResponse updateStatus(@PathVariable("id") Long id,
                                      @Valid @RequestBody LeadUpdateStatusRequest request,
                                      Authentication authentication) {
-        return leadService.updateStatus(id, request, authentication.getName());
+        try {
+            return leadService.updateStatus(id, request, authentication.getName());
+        } catch (IllegalStateException ise) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, ise.getMessage());
+        } catch (RuntimeException ex) {
+            Throwable root = NestedExceptionUtils.getMostSpecificCause(ex);
+            String message = root != null && root.getMessage() != null ? root.getMessage() : ex.getMessage();
+            if (message != null && (message.contains("Cannot move lead to")
+                    || message.contains("This status transition is not allowed by flow")
+                    || message.contains("Invalid lead status")
+                    || message.contains("no eligible active employee available for lead assignment"))) {
+                throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+            }
+            throw ex;
+        }
     }
 
     @GetMapping("/{id}/assignable-allocators")
@@ -139,10 +156,19 @@ public class LeadController {
                 .orElse(null);
         List<Long> leadIds;
         if (actor != null && actor.getRole() == Role.EMPLOYEE) {
-            leadIds = leadRepository.findByDeletedFalseAndOwnerUserIdOrderByCreatedAtDesc(actor.getId()).stream()
-                    .map(com.nexorcrm.backend.entity.Lead::getId)
+            // include leads the employee currently owns plus any design-phase leads
+            // where they were the payment owner
+            List<Long> owned = leadRepository.findByDeletedFalseAndOwnerUserIdOrderByCreatedAtDesc(actor.getId())
+                    .stream().map(com.nexorcrm.backend.entity.Lead::getId)
                     .filter(Objects::nonNull)
-                    .toList();
+                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+            List<Long> paymentOwned = leadRepository.findByDeletedFalseAndPaymentOwnerIdOrderByCreatedAtDesc(actor.getId())
+                    .stream().map(com.nexorcrm.backend.entity.Lead::getId)
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+            // merge while preserving uniqueness
+            owned.addAll(paymentOwned.stream().filter(id -> !owned.contains(id)).toList());
+            leadIds = owned;
         } else {
             List<LeadResponse> leads = leadService.list(authentication.getName(),
                     null, null, null, null, null, null, null);
@@ -174,50 +200,6 @@ public class LeadController {
     public ApiMessageResponse deleteLead(@PathVariable("id") Long id, Authentication authentication) {
         leadService.deleteLead(id, authentication.getName());
         return new ApiMessageResponse("Lead deleted");
-    }
-
-    @PatchMapping(value = "/{id}/boq", consumes = {"multipart/form-data"})
-    public LeadResponse updateBoq(@PathVariable("id") Long id,
-                                  @RequestParam(value = "amount", required = false) BigDecimal amount,
-                                  @RequestParam(value = "notes", required = false) String notes,
-                                  @RequestParam(value = "file", required = false) MultipartFile file,
-                                  Authentication authentication) {
-        return leadService.updateBoq(id, amount, notes, file, authentication.getName());
-    }
-
-    @GetMapping("/{id}/boq/file")
-    public ResponseEntity<Resource> getBoqFile(@PathVariable("id") Long id, Authentication authentication) {
-        var lead = leadService.getBoqFileEntry(id, authentication.getName());
-        String path = lead.getBoqFilePath();
-        Resource resource = new org.springframework.core.io.FileSystemResource(path);
-        if (!resource.exists() || !resource.isReadable()) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND, "BOQ file not found");
-        }
-
-        String filename = lead.getBoqFileName();
-        if (filename == null || filename.isBlank()) {
-            filename = "boq-file";
-        }
-        filename = filename.replace("\"", "");
-
-        String contentType = lead.getBoqFileType();
-        MediaType mediaType;
-        try {
-            mediaType = contentType != null && !contentType.isBlank()
-                    ? MediaType.parseMediaType(contentType)
-                    : MediaType.APPLICATION_OCTET_STREAM;
-        } catch (Exception ex) {
-            mediaType = MediaType.APPLICATION_OCTET_STREAM;
-        }
-
-        boolean inline = contentType != null && contentType.toLowerCase().startsWith("image/");
-        String disposition = inline ? "inline" : "attachment";
-
-        return ResponseEntity.ok()
-                .contentType(mediaType)
-                .header("Content-Disposition", disposition + "; filename=\"" + filename + "\"")
-                .body(resource);
     }
 
     @GetMapping("/{id}/chat/messages/{messageId}/file")

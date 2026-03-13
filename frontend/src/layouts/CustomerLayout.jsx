@@ -7,6 +7,16 @@ import { getCustomerChatNotifications } from "../api/customerChatApi";
 export default function CustomerLayout() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  
+  // Debug: Log customer auth info
+  useEffect(() => {
+    console.log('[CustomerLayout] User auth info:', {
+      id: user?.id,
+      email: user?.email,
+      role: user?.role,
+      isCustomer: user?.role?.toUpperCase() === 'CUSTOMER',
+    });
+  }, [user]);
   const [leadName, setLeadName] = useState("");
   const [notice, setNotice] = useState("");
   const [notifyCount, setNotifyCount] = useState(0);
@@ -33,15 +43,24 @@ export default function CustomerLayout() {
           lead?.projectName ||
           "";
         setLeadName(name);
-      } catch {
-        if (active) setLeadName("");
+      } catch (error) {
+        if (!active) return;
+        // 401 means token is invalid - should logout and redirect
+        if (error?.response?.status === 401) {
+          console.error("[CustomerLayout] Customer auth failed (401), logging out and redirecting to login");
+          logout();
+          navigate("/login", { replace: true });
+        } else {
+          console.debug("Failed to load lead:", error?.message);
+          setLeadName("");
+        }
       }
     };
     loadLead();
     return () => {
       active = false;
     };
-  }, []);
+  }, [logout, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -71,8 +90,18 @@ export default function CustomerLayout() {
             .reduce((acc, date) => (date > acc ? date : acc), new Date(lastSeenRef.current));
           lastSeenRef.current = maxCreated.toISOString();
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        // 401 means customer's session is invalid
+        if (error?.response?.status === 401) {
+          console.warn("[CustomerLayout] Polling detected 401 - customer session invalid");
+          // Don't logout here, let the initial loadLead handle it
+          // This is just a background poll, not critical
+        } else if (error?.response?.status === 403) {
+          console.debug("Chat notifications forbidden (403) - may be normal for some states");
+        } else if (error?.message !== 'canceled') {
+          // Silently ignore network errors and abort errors
+          console.debug("Chat notification poll error:", error?.message);
+        }
       }
     };
     poll();

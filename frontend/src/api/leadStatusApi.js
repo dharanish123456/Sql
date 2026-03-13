@@ -4,9 +4,10 @@ export const DEFAULT_LEAD_STATUSES = [
   'New Lead',
   'Attempted',
   'Interested',
-  'Rejected',
-  'Boq',
+  'Requirement',
   'Payment',
+  'Production',
+  'Accounts',
 ]
 
 export async function getLeadStatuses() {

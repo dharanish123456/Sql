@@ -20,7 +20,6 @@ import {
   getUserOrgSelection,
 } from "../../api/orgHierarchyApi";
 import { useAuth } from "../../context/AuthContext";
-import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 
 const EMPTY_FORM = { name: "", level: 0 };
 const EMPTY_SCOPE = {
@@ -932,27 +931,6 @@ function UsergroupsPage() {
                       </small>
                     )}
                   </div>
-                  <div className="mb-3">
-                    <label className="form-label">CRM Page Visibility</label>
-                    <div className="d-flex flex-wrap gap-3">
-                      {CRM_PAGE_OPTIONS.map((page) => (
-                        <label key={page.key} className="d-flex align-items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={createPageKeys.includes(page.key)}
-                            onChange={() =>
-                              setCreatePageKeys((prev) =>
-                                prev.includes(page.key)
-                                  ? prev.filter((key) => key !== page.key)
-                                  : [...prev, page.key],
-                              )
-                            }
-                          />
-                          <span>{page.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                 </div>
                 <div className="modal-footer">
                   <button
@@ -1208,27 +1186,6 @@ function UsergroupsPage() {
                         Manager can only keep their own team.
                       </small>
                     )}
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">CRM Page Visibility</label>
-                    <div className="d-flex flex-wrap gap-3">
-                      {CRM_PAGE_OPTIONS.map((page) => (
-                        <label key={page.key} className="d-flex align-items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={editPageKeys.includes(page.key)}
-                            onChange={() =>
-                              setEditPageKeys((prev) =>
-                                prev.includes(page.key)
-                                  ? prev.filter((key) => key !== page.key)
-                                  : [...prev, page.key],
-                              )
-                            }
-                          />
-                          <span>{page.label}</span>
-                        </label>
-                      ))}
-                    </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Add Users</label>

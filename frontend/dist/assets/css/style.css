@@ -349,8 +349,13 @@ ul .btn-primary:not(:disabled):not(.disabled):active:focus, ul .btn-primary:not(
 .bg-success {
   background-color: #03C95A !important;
   border: 1px solid #03C95A !important;
-  color: #FFF;
+  color: #000;
 }
+
+/* hide native checkmark in multi-select options */
+select[multiple] option::-ms-check { display:none; }
+select[multiple] option::before { content: none !important; }
+
 
 .bg-info {
   background-color: #1B84FF !important;

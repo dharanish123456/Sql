@@ -61,8 +61,12 @@ export async function createLead(payload) {
   return response?.data || {}
 }
 
-export async function updateLeadRowStatus(id, status) {
-  const response = await api.patch(`/api/v1/leads/${id}/status`, { status })
+export async function updateLeadRowStatus(id, status, nextGroupId = null) {
+  const payload = { status }
+  if (nextGroupId !== undefined && nextGroupId !== null) {
+    payload.nextGroupId = nextGroupId
+  }
+  const response = await api.patch(`/api/v1/leads/${id}/status`, payload)
   return response?.data || {}
 }
 
@@ -149,26 +153,13 @@ export async function getLeadChatNotifications(since) {
   return Array.isArray(response?.data) ? response.data : []
 }
 
-export async function updateLeadBoq(leadId, { amount, notes, file } = {}) {
-  const formData = new FormData()
-  if (amount !== undefined && amount !== null && String(amount).trim() !== "") {
-    formData.append("amount", amount)
-  }
-  if (notes !== undefined && notes !== null) {
-    formData.append("notes", notes)
-  }
-  if (file) {
-    formData.append("file", file)
-  }
-  const response = await api.patch(`/api/v1/leads/${leadId}/boq`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  })
+
+export async function recordLeadPayment(leadId, { amount, type }) {
+  const response = await api.post(`/api/v1/leads/${leadId}/payment`, { amount, type })
   return response?.data || {}
 }
 
-export async function downloadLeadBoqFile(leadId) {
-  const response = await api.get(`/api/v1/leads/${leadId}/boq/file`, {
-    responseType: "blob",
-  })
-  return response?.data || null
+export async function getLeadPaymentSummary(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/payment`)
+  return response?.data || {}
 }

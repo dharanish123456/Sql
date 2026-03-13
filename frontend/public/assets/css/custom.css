@@ -624,12 +624,6 @@ input.form-control.input-animate::placeholder {
     color: #166534;
 }
 
-/* BOQ */
-.status-text:contains("BOQ"),
-.status-boq {
-    background: #fff7ed;
-    color: #9a3412;
-}
 
 /* ===============================
    PHONE ICON
@@ -1266,6 +1260,12 @@ table.dataTable.dtr-inline.collapsed
     border-radius: 16px;
     border: 1px solid rgba(148, 163, 184, 0.2);
     background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(249, 115, 22, 0.08));
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.customer-chat__contact--active {
+    background: linear-gradient(135deg, rgba(15, 118, 110, 0.22), rgba(249, 115, 22, 0.18));
+    border-color: rgba(15, 118, 110, 0.45);
 }
 
 .customer-chat__avatar {
@@ -1648,7 +1648,7 @@ table.dataTable.dtr-inline.collapsed
     color: #64748b;
 }
 
-.customer-chat__composer .btn {
+.customer-chat__composer .customer-chat__send-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1656,6 +1656,32 @@ table.dataTable.dtr-inline.collapsed
     padding: 8px 16px;
     background: #f97316;
     border: none;
+    color: #fff;
+}
+
+.customer-chat__composer .customer-chat__status-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 12px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid #f26522;
+    color: #f26522;
+}
+
+.customer-chat__composer .customer-chat__status-trigger:hover,
+.customer-chat__composer .customer-chat__status-trigger:focus,
+.customer-chat__composer .customer-chat__status-trigger:active {
+    background: #f26522;
+    color: #fff;
+}
+
+.customer-chat__composer .customer-chat__status-trigger:disabled {
+    opacity: 0.6;
+    background: transparent;
+    color: #f26522;
+    border-color: #f26522;
 }
 
 .customer-status {

@@ -39,10 +39,33 @@ public class LeadResponse {
     private String rejectedReasonSubtype;
     private java.math.BigDecimal boqAmount;
     private String boqFileName;
+
+    // payment tracking
+    private java.math.BigDecimal totalAmount;
+    private java.math.BigDecimal paidAmount;
+    private java.math.BigDecimal remainingAmount;
+    private LocalDateTime designStartAt;
+    private LocalDateTime designEndAt;
+
+    // saved owner from payment phase, restored when lead returns to payment
+    private Long paymentOwnerId;
+
+    // preserved production owner when lead leaves production; reused when it
+    // comes back so the same employee handles the lead every time production
+    // status is active
+    private Long productionOwnerId;
     private String boqFilePath;
     private String boqFileType;
     private Long boqFileSize;
     private String boqNotes;
+    // requirement fields
+    private String requirementType;
+    private String requirementFileName;
+    private String requirementFilePath;
+    private String requirementFileType;
+    private Long requirementFileSize;
+    private String requirementNotes;
+
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -125,6 +148,37 @@ public class LeadResponse {
     public void setBoqFileSize(Long boqFileSize) { this.boqFileSize = boqFileSize; }
     public String getBoqNotes() { return boqNotes; }
     public void setBoqNotes(String boqNotes) { this.boqNotes = boqNotes; }
+
+    public String getRequirementType() { return requirementType; }
+    public void setRequirementType(String requirementType) { this.requirementType = requirementType; }
+    public String getRequirementFileName() { return requirementFileName; }
+    public void setRequirementFileName(String requirementFileName) { this.requirementFileName = requirementFileName; }
+    public String getRequirementFilePath() { return requirementFilePath; }
+    public void setRequirementFilePath(String requirementFilePath) { this.requirementFilePath = requirementFilePath; }
+    public String getRequirementFileType() { return requirementFileType; }
+    public void setRequirementFileType(String requirementFileType) { this.requirementFileType = requirementFileType; }
+    public Long getRequirementFileSize() { return requirementFileSize; }
+    public void setRequirementFileSize(Long requirementFileSize) { this.requirementFileSize = requirementFileSize; }
+    public String getRequirementNotes() { return requirementNotes; }
+    public void setRequirementNotes(String requirementNotes) { this.requirementNotes = requirementNotes; }
+
+    public java.math.BigDecimal getTotalAmount() { return totalAmount; }
+    public void setTotalAmount(java.math.BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public java.math.BigDecimal getPaidAmount() { return paidAmount; }
+    public void setPaidAmount(java.math.BigDecimal paidAmount) { this.paidAmount = paidAmount; }
+    public java.math.BigDecimal getRemainingAmount() { return remainingAmount; }
+    public void setRemainingAmount(java.math.BigDecimal remainingAmount) { this.remainingAmount = remainingAmount; }
+    public LocalDateTime getDesignStartAt() { return designStartAt; }
+    public void setDesignStartAt(LocalDateTime designStartAt) { this.designStartAt = designStartAt; }
+    public LocalDateTime getDesignEndAt() { return designEndAt; }
+    public void setDesignEndAt(LocalDateTime designEndAt) { this.designEndAt = designEndAt; }
+
+    public Long getPaymentOwnerId() { return paymentOwnerId; }
+    public void setPaymentOwnerId(Long paymentOwnerId) { this.paymentOwnerId = paymentOwnerId; }
+
+    public Long getProductionOwnerId() { return productionOwnerId; }
+    public void setProductionOwnerId(Long productionOwnerId) { this.productionOwnerId = productionOwnerId; }
+
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

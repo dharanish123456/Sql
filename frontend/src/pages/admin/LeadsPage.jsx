@@ -4,9 +4,13 @@ import {
   createLead,
   deleteLead,
   getAssignableLeadGroups,
+  getLeadChatMessages,
   getLeadFilters,
   getLeads,
   updateLeadRowStatus,
+  getAssignableAllocators,
+  updateLeadAllocator,
+  updateLeadDetails,
 } from "../../api/leadsApi";
 import { getLeadStatuses, DEFAULT_LEAD_STATUSES } from "../../api/leadStatusApi";
 import { getPrimarySources } from "../../api/primarySourceApi";
@@ -17,9 +21,22 @@ import { getChannelPartners } from "../../api/channelPartnerApi";
 import { getGroupMembers } from "../../api/userGroupApi";
 import { getUserGroups } from "../../api/userGroupApi";
 import { getLeadFlow } from "../../api/flowApi";
+import { updateCustomerLeadStatus } from "../../api/customerApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
+import {
+  COUNTRY_CODE_OPTIONS,
+  defaultCountryOption,
+  ensureCountryCodeValue,
+  getCountryAllowedLengths,
+  getCountryDisplayMaxLength,
+  getCountryOptionByValue,
+  sanitizePhoneDigits,
+  validatePhoneNumber,
+} from "../../utils/phoneUtils";
 import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../components/system/ToastProvider";
+import useConfirmDialog from "../../components/system/useConfirmDialog";
 
 const EMPTY_CREATE_FORM = {
   projectName: "",
@@ -31,7 +48,48 @@ const EMPTY_CREATE_FORM = {
   tertiarySource: "",
   leadGroupId: "",
   channelPartnerId: "",
+  countryCode: defaultCountryOption.value,
 };
+
+const DESIGN_THREAD_MARKER = "[[design-thread]]";
+
+function hasDesignThreadMarker(value) {
+  return String(value || "").trimStart().startsWith(DESIGN_THREAD_MARKER);
+}
+
+function stripDesignThreadMarker(value) {
+  const raw = String(value || "");
+  if (!hasDesignThreadMarker(raw)) return raw;
+  const startTrimmed = raw.trimStart();
+  const withoutMarker = startTrimmed.slice(DESIGN_THREAD_MARKER.length);
+  return withoutMarker.replace(/^\s+/, "");
+}
+
+function isFinalDesignUploadMessage(row) {
+  const text = stripDesignThreadMarker(row?.message || "").trim().toLowerCase();
+  return text === "final design uploaded" && !!row?.attachmentName;
+}
+
+function toInputDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getDesignDurationDays(startValue, endValue) {
+  if (!startValue || !endValue) return "";
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return "";
+  }
+  const diffMs = end.getTime() - start.getTime();
+  return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+}
 
 function pickText(row, keys = []) {
   for (const key of keys) {
@@ -153,6 +211,8 @@ export default function LeadsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = String(user?.role || "").toUpperCase();
+  const { showSuccess, showError } = useToast();
+  const { showConfirm, confirmDialog } = useConfirmDialog();
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState({
     search: "",
@@ -166,7 +226,6 @@ export default function LeadsPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   const [primaryOptions, setPrimaryOptions] = useState([]);
   const [secondaryOptions, setSecondaryOptions] = useState([]);
@@ -186,11 +245,35 @@ export default function LeadsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [createGroupMembers, setCreateGroupMembers] = useState([]);
+  const [createMobileError, setCreateMobileError] = useState("");
   const [flowRules, setFlowRules] = useState([]);
+  const handleCreateCountryCodeChange = (value) => {
+    setCreateForm((p) => ({
+      ...p,
+      countryCode: ensureCountryCodeValue(value),
+      mobile: "",
+    }));
+    setCreateMobileError("");
+    setError("");
+  };
+
+  const handleCreateMobileChange = (value) => {
+    const option = getCountryOptionByValue(createForm.countryCode);
+    const lengths = getCountryAllowedLengths(createForm.countryCode);
+    setCreateForm((p) => ({
+      ...p,
+      mobile: sanitizePhoneDigits(value, option?.maxLength, lengths),
+    }));
+    setCreateMobileError("");
+    setError("");
+  };
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusLead, setStatusLead] = useState(null);
   const [statusValue, setStatusValue] = useState("");
+  const [showDesignDurationModal, setShowDesignDurationModal] = useState(false);
+  const [designStartAt, setDesignStartAt] = useState("");
+  const [designEndAt, setDesignEndAt] = useState("");
   const [showRemarkModal, setShowRemarkModal] = useState(false);
   const [remarkLead, setRemarkLead] = useState(null);
   const [remarkValue, setRemarkValue] = useState("");
@@ -319,12 +402,6 @@ export default function LeadsPage() {
   }, [role]);
 
   useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 2300);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
     let isMounted = true;
     const loadCreateGroupMembers = async () => {
       if (!createForm.leadGroupId) {
@@ -371,13 +448,6 @@ export default function LeadsPage() {
     await loadLeads(cleared);
   };
 
-  const openCreateModal = () => {
-    setCreateForm(EMPTY_CREATE_FORM);
-    setCreateGroupMembers([]);
-    setShowCreate(true);
-    setError("");
-  };
-
   const leadPageKey = CRM_PAGE_OPTIONS.find((item) => item.key === "leads")?.key || "leads";
   const leadEligibleGroups = useMemo(
     () =>
@@ -386,10 +456,49 @@ export default function LeadsPage() {
       ),
     [groupOptions, leadPageKey],
   );
+  const newLeadFlowGroupId = useMemo(() => {
+    const rule = Array.isArray(flowRules)
+      ? flowRules.find(
+          (item) => String(item?.status || "").trim().toLowerCase() === "new lead",
+        )
+      : null;
+    return rule?.handledByGroupId != null && String(rule.handledByGroupId).trim() !== ""
+      ? String(rule.handledByGroupId)
+      : "";
+  }, [flowRules]);
+  const createAllowedGroup = useMemo(
+    () =>
+      newLeadFlowGroupId
+        ? leadEligibleGroups.find((group) => String(group.id) === String(newLeadFlowGroupId)) || null
+        : null,
+    [leadEligibleGroups, newLeadFlowGroupId],
+  );
+  const canCreateNewLead = !newLeadFlowGroupId || !!createAllowedGroup;
+  const createCountryDisplayMaxLength = getCountryDisplayMaxLength(createForm.countryCode);
+
+  const openCreateModal = () => {
+    if (!canCreateNewLead) {
+      setError("Only the group assigned to New Lead can create new leads");
+      return;
+    }
+    setCreateForm({
+      ...EMPTY_CREATE_FORM,
+      leadGroupId: createAllowedGroup?.id ? String(createAllowedGroup.id) : "",
+    });
+    setCreateGroupMembers([]);
+    setShowCreate(true);
+    setError("");
+    setCreateMobileError("");
+  };
 
   const handleCreateLead = async () => {
     if (!createForm.name.trim() || !createForm.mobile.trim()) {
       setError("Name and mobile are required");
+      return;
+    }
+    const phoneValidation = validatePhoneNumber(createForm.mobile, createForm.countryCode);
+    if (phoneValidation) {
+      setCreateMobileError(phoneValidation);
       return;
     }
     if (!createForm.primarySource.trim()) {
@@ -403,6 +512,10 @@ export default function LeadsPage() {
       setError("Channel Partner is required for Channel Partner source");
       return;
     }
+    if (newLeadFlowGroupId && String(createForm.leadGroupId || "") !== String(newLeadFlowGroupId)) {
+      setError("Only the group assigned to New Lead can create new leads");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -410,6 +523,7 @@ export default function LeadsPage() {
       const payload = {
         name: createForm.name.trim(),
         email: createForm.email.trim() || null,
+        countryCode: createForm.countryCode,
         mobile: createForm.mobile.trim(),
         primarySource: createForm.primarySource.trim(),
         secondarySource: createForm.secondarySource.trim() || null,
@@ -425,7 +539,8 @@ export default function LeadsPage() {
       const created = await createLead(payload);
       setRows((prev) => [created, ...prev]);
       setShowCreate(false);
-      setNotice("Lead created");
+      setCreateMobileError("");
+      showSuccess("Lead created");
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to create lead"));
     } finally {
@@ -436,8 +551,48 @@ export default function LeadsPage() {
   const openStatusModal = (lead) => {
     setStatusLead(lead);
     setStatusValue("");
+    setDesignStartAt(toInputDateTime(lead?.designStartAt || ""));
+    setDesignEndAt(toInputDateTime(lead?.designEndAt || ""));
     setShowStatusModal(true);
     setError("");
+  };
+
+  const applyManagedStatusUpdate = async (nextKey, leadOverride = statusLead) => {
+    const activeLead = leadOverride || statusLead;
+    if (!activeLead?.id) return;
+
+    // Preserve the current owner so the backend can continue the round-robin flow.
+    if ((nextKey === "design" || nextKey === "production") && activeLead?.ownerUserId) {
+      await updateLeadDetails(activeLead.id, {
+        paymentOwnerId: activeLead.ownerUserId,
+      });
+    }
+
+    const nextLead = await updateLeadRowStatus(activeLead.id, statusValue);
+
+    if (nextKey === "payment") {
+      // no seeding logic required any more
+    }
+
+    if (nextKey === "payment") {
+      try {
+        await updateCustomerLeadStatus("Payment", activeLead.id);
+      } catch (custErr) {
+        console.warn("Could not update customer status:", custErr);
+      }
+    }
+
+    setRows((prev) =>
+      prev.map((row) =>
+        String(row.id) === String(activeLead.id) ? { ...row, ...nextLead } : row,
+      ),
+    );
+    setShowStatusModal(false);
+    setShowDesignDurationModal(false);
+    setStatusLead(null);
+    showSuccess(
+      `Lead moved to ${nextKey.charAt(0).toUpperCase() + nextKey.slice(1)} status with round-robin assignment`,
+    );
   };
 
   const saveStatusUpdate = async () => {
@@ -446,13 +601,105 @@ export default function LeadsPage() {
       setError("Please select a status");
       return;
     }
+    const currentKey = String(statusLead?.status || "").trim().toLowerCase();
     const nextKey = String(statusValue || "").trim().toLowerCase();
-    if (["attempted", "interested", "rejected", "allocate", "boq"].includes(nextKey)) {
+    if (role === "EMPLOYEE" && currentKey === "design" && nextKey !== "design") {
+      setSaving(true);
+      setError("");
+      try {
+        const messages = await getLeadChatMessages(statusLead.id, "CUSTOMER");
+        const hasFinalDesign = Array.isArray(messages) && messages.some(isFinalDesignUploadMessage);
+        if (!hasFinalDesign) {
+          const message = "Please upload the final design before changing status from Design";
+          setError(message);
+          showError(message);
+          return;
+        }
+      } catch (e) {
+        const message = extractApiErrorMessage(e, "Failed to verify final design upload");
+        setError(message);
+        showError(message);
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+    if (["attempted", "interested", "rejected", "requirement", "allocate"].includes(nextKey)) {
       setShowStatusModal(false);
       setStatusLead(null);
       navigate(`/leads/${statusLead.id}?status=${encodeURIComponent(statusValue)}`);
       return;
     }
+
+    if (nextKey === "design" && (!statusLead?.designStartAt || !statusLead?.designEndAt)) {
+      setShowStatusModal(false);
+      setShowDesignDurationModal(true);
+      return;
+    }
+    
+    // Handle payment/design/production status with round‑robin assignment and history
+    if (nextKey === "payment" || nextKey === "design" || nextKey === "production") {
+      setSaving(true);
+      setError("");
+      try {
+        await applyManagedStatusUpdate(nextKey);
+      } catch (e) {
+        setError(extractApiErrorMessage(e, "Failed to update status"));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (nextKey === "payment" || nextKey === "design" || nextKey === "production") {
+      setSaving(true);
+      setError("");
+      try {
+        // preserve existing payment owner before changing status
+        if ((nextKey === "design" || nextKey === "production") && statusLead?.ownerUserId) {
+          // store the current owner so we can restore him later
+          await updateLeadDetails(statusLead.id, {
+            paymentOwnerId: statusLead.ownerUserId,
+          });
+        }
+
+        const nextLead = await updateLeadRowStatus(statusLead.id, statusValue);
+
+        // when moving to payment, seed total/paid/remaining if absent
+        if (nextKey === "payment") {
+          // no seeding now
+        }
+
+        // payment/design assignment is backend-owned; avoid overriding the
+        // server-selected flow group or owner from the client.
+
+        if (nextKey === "payment") {
+          try {
+            await updateCustomerLeadStatus("Payment", statusLead.id);
+          } catch (custErr) {
+            console.warn("Could not update customer status:", custErr);
+          }
+        }
+
+        setRows((prev) =>
+          prev.map((row) =>
+            String(row.id) === String(statusLead.id) ? { ...row, ...nextLead } : row,
+          ),
+        );
+        setShowStatusModal(false);
+        setStatusLead(null);
+        showSuccess(
+          `✓ Lead moved to ${nextKey.charAt(0).toUpperCase() + nextKey.slice(1)} status with round-robin assignment`,
+        );
+      } catch (e) {
+        setError(extractApiErrorMessage(e, "Failed to update status"));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Standard status update
     setSaving(true);
     setError("");
     try {
@@ -464,7 +711,7 @@ export default function LeadsPage() {
       );
       setShowStatusModal(false);
       setStatusLead(null);
-      setNotice("Lead status updated");
+      showSuccess("Lead status updated");
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to update status"));
     } finally {
@@ -472,21 +719,50 @@ export default function LeadsPage() {
     }
   };
 
-  const handleDeleteLead = async (lead) => {
-    if (!lead?.id) return;
-    const ok = window.confirm("Delete this lead?");
-    if (!ok) return;
+  const submitDesignDuration = async () => {
+    if (!statusLead?.id) return;
+    if (!designStartAt || !designEndAt) {
+      setError("Please select design start and end dates");
+      return;
+    }
+
     setSaving(true);
     setError("");
     try {
-      await deleteLead(lead.id);
-      setRows((prev) => prev.filter((row) => String(row.id) !== String(lead.id)));
-      setNotice("Lead deleted");
+      const detailUpdate = await updateLeadDetails(statusLead.id, {
+        designStartAt,
+        designEndAt,
+      });
+      const nextLead = { ...statusLead, ...detailUpdate };
+      await applyManagedStatusUpdate("design", nextLead);
     } catch (e) {
-      setError(extractApiErrorMessage(e, "Failed to delete lead"));
+      setError(extractApiErrorMessage(e, "Failed to update design duration"));
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteLead = async (lead) => {
+    if (!lead?.id) return;
+    showConfirm({
+      title: "Delete Lead",
+      message: "Are you sure you want to delete this lead? This action cannot be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      onConfirm: async () => {
+        setSaving(true);
+        setError("");
+        try {
+          await deleteLead(lead.id);
+          setRows((prev) => prev.filter((row) => String(row.id) !== String(lead.id)));
+          showSuccess("Lead deleted");
+        } catch (e) {
+          setError(extractApiErrorMessage(e, "Failed to delete lead"));
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   };
 
   const orderedLeadStatuses = useMemo(() => {
@@ -501,15 +777,19 @@ export default function LeadsPage() {
     return Array.from(new Set(normalized));
   }, [leadStatusOptions, leadFilters.leadStatuses]);
 
+  const normalizeKey = (s) => String(s || "").trim().toLowerCase();
+  const displayStatus = (s) => {
+    return s || "";
+  };
   const allowedStatusOptions = useMemo(() => {
-    const current = String(statusLead?.status || "").trim().toLowerCase();
+    const current = normalizeKey(statusLead?.status);
     if (!current) {
       return orderedLeadStatuses;
     }
     const rule = Array.isArray(flowRules)
       ? flowRules.find(
           (r) =>
-            String(r?.status || "").trim().toLowerCase() === current,
+            normalizeKey(r?.status) === current,
         )
       : null;
     const nextKeys = rule?.next ? Object.keys(rule.next) : [];
@@ -542,7 +822,7 @@ export default function LeadsPage() {
     );
     setShowRemarkModal(false);
     setRemarkLead(null);
-    setNotice("Remark updated");
+    showSuccess("Remark updated");
   };
 
   const toggleLeadSelection = (leadId) => {
@@ -612,8 +892,6 @@ export default function LeadsPage() {
 
   return (
     <div className="container-fluid">
-      {notice && <div className="alert alert-success">{notice}</div>}
-      {error && <div className="alert alert-danger">{error}</div>}
 
       <div className="card">
         <div className="card-header border-0">
@@ -641,10 +919,15 @@ export default function LeadsPage() {
                 <i className="ti ti-filter me-1" />
                 Filter
               </button>
-              <button className="btn btn-success" onClick={openCreateModal}>
-                <i className="ti ti-plus me-1" />
-                Create New Lead
-              </button>
+              {canCreateNewLead ? (
+                <button
+                  className="btn btn-success"
+                  onClick={openCreateModal}
+                >
+                  <i className="ti ti-plus me-1" />
+                  Create New Lead
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -880,7 +1163,7 @@ export default function LeadsPage() {
                             className="btn btn-sm d-inline-flex align-items-center justify-content-center"
                             style={{
                               backgroundColor:
-                                String(row.status || "").trim().toLowerCase() === "boq"
+                                ["payment", "design"].includes(String(row.status || "").trim().toLowerCase())
                                   ? "#20c997"
                                   : "#adb5bd",
                               color: "#fff",
@@ -890,22 +1173,31 @@ export default function LeadsPage() {
                               borderRadius: 4,
                               border: "none",
                               cursor:
-                                String(row.status || "").trim().toLowerCase() === "boq"
+                                ["payment", "design"].includes(String(row.status || "").trim().toLowerCase())
                                   ? "pointer"
                                   : "not-allowed",
                               opacity:
-                                String(row.status || "").trim().toLowerCase() === "boq"
+                                ["payment", "design"].includes(String(row.status || "").trim().toLowerCase())
                                   ? 1
                                   : 0.6,
                             }}
                             onClick={() => {
-                              if (String(row.status || "").trim().toLowerCase() !== "boq") return;
-                              navigate(`/leads/${row.id}/chat`);
+                              const statusKey = String(row.status || "").trim().toLowerCase();
+                              if (!["payment", "design"].includes(statusKey)) return;
+                              if (statusKey === "payment") {
+                                navigate(`/leads/${row.id}/chat?thread=PAYMENT`);
+                                return;
+                              }
+                              if (statusKey === "design") {
+                                navigate(`/leads/${row.id}/chat?thread=DESIGN`);
+                                return;
+                              }
+                              navigate(`/leads/${row.id}/chat?thread=MANAGER`);
                             }}
                             title={
-                              String(row.status || "").trim().toLowerCase() === "boq"
+                              ["payment", "design"].includes(String(row.status || "").trim().toLowerCase())
                                 ? "Chat"
-                                : "Chat available after BOQ"
+                                : "Chat available in Payment/Design"
                             }
                           >
                             <i className="ti ti-message" />
@@ -951,25 +1243,22 @@ export default function LeadsPage() {
                         </div>
                       </td>
                       <td>
-                        <div className="d-inline-flex align-items-center gap-2">
-                          <span>{row.svStatus || "-"}</span>
-                          <button
-                            className="btn btn-sm d-inline-flex align-items-center justify-content-center"
-                            style={{
-                              backgroundColor: "#6f65d6",
-                              color: "#fff",
-                              width: 24,
-                              height: 24,
-                              padding: 0,
-                              borderRadius: 4,
-                              border: "none",
-                            }}
-                            onClick={() => openRemarkModal(row)}
-                            title="Add Remark"
-                          >
-                            <NoteGlyph size={11} />
-                          </button>
-                        </div>
+                        <button
+                          className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+                          style={{
+                            backgroundColor: "#6f65d6",
+                            color: "#fff",
+                            width: 24,
+                            height: 24,
+                            padding: 0,
+                            borderRadius: 4,
+                            border: "none",
+                          }}
+                          onClick={() => openRemarkModal(row)}
+                          title={row.svStatus ? "View Remark" : "Add Remark"}
+                        >
+                          <NoteGlyph size={11} />
+                        </button>
                       </td>
                       <td>{row.owner || "-"}</td>
                       <td>{formatDateTime(row.createdAt)}</td>
@@ -1074,15 +1363,18 @@ export default function LeadsPage() {
                       </select>
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">Mobile Number</label>
-                      <input
-                        className="form-control"
-                        value={createForm.mobile}
-                        onChange={(e) =>
-                          setCreateForm((prev) => ({ ...prev, mobile: e.target.value }))
-                        }
-                        placeholder="Enter 10 Digit Number"
-                      />
+                      <label className="form-label">Country Code</label>
+                      <select
+                        className="form-select"
+                        value={createForm.countryCode}
+                        onChange={(e) => handleCreateCountryCodeChange(e.target.value)}
+                      >
+                        {COUNTRY_CODE_OPTIONS.map((option) => (
+                          <option key={`${option.country}-${option.callingCode}`} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="col-md-6">
                       <label className="form-label">Tertiary Source</label>
@@ -1103,6 +1395,28 @@ export default function LeadsPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Mobile Number <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        className="form-control"
+                        value={createForm.mobile}
+                        placeholder={`Enter ${createCountryDisplayMaxLength || ""} digit number`}
+                        inputMode="numeric"
+                        pattern="\d*"
+                        maxLength={createCountryDisplayMaxLength || undefined}
+                        onChange={(e) => handleCreateMobileChange(e.target.value)}
+                      />
+                      <div className="d-flex justify-content-between mt-1">
+                        <small className="text-muted">
+                          {createCountryDisplayMaxLength
+                            ? `${createCountryDisplayMaxLength} digits required`
+                            : "Numeric value"}
+                        </small>
+                        {createMobileError && <small className="text-danger">{createMobileError}</small>}
+                      </div>
                     </div>
                     <input type="hidden" value={createForm.leadGroupId} readOnly />
                     {createForm.primarySource.toLowerCase() === "channel partner" && (
@@ -1198,10 +1512,9 @@ export default function LeadsPage() {
                             key={item}
                             className={`badge ${item === statusValue ? "bg-primary" : "bg-light text-dark"}`}
                           >
-                            {item}
+                            {displayStatus ? displayStatus(item) : item}
                           </span>
-                        ))}
-                      </div>
+                        ))}                      </div>
                     </div>
                   )}
                   <div className="mb-3">
@@ -1232,6 +1545,70 @@ export default function LeadsPage() {
                   </button>
                   <button className="btn btn-primary" onClick={saveStatusUpdate} disabled={saving}>
                     {saving ? "Saving..." : "Update Status"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
+
+      {showDesignDurationModal && statusLead && (
+        <>
+          <div className="modal fade show" style={{ display: "block" }} tabIndex="-1">
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Design Duration</h5>
+                  <button
+                    className="btn-close"
+                    onClick={() => {
+                      setShowDesignDurationModal(false);
+                      setStatusLead(null);
+                    }}
+                  />
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Design Start</label>
+                    <input
+                      className="form-control"
+                      type="datetime-local"
+                      value={designStartAt}
+                      onChange={(e) => setDesignStartAt(e.target.value)}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Design End</label>
+                    <input
+                      className="form-control"
+                      type="datetime-local"
+                      value={designEndAt}
+                      onChange={(e) => setDesignEndAt(e.target.value)}
+                    />
+                  </div>
+                  <div className="mb-0">
+                    <label className="form-label">Duration</label>
+                    <input
+                      className="form-control"
+                      value={getDesignDurationDays(designStartAt, designEndAt) || "-"}
+                      readOnly
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    className="btn btn-light"
+                    onClick={() => {
+                      setShowDesignDurationModal(false);
+                      setStatusLead(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button className="btn btn-primary" onClick={submitDesignDuration} disabled={saving}>
+                    {saving ? "Saving..." : "Save & Continue"}
                   </button>
                 </div>
               </div>
@@ -1287,7 +1664,8 @@ export default function LeadsPage() {
           <div className="modal-backdrop fade show" />
         </>
       )}
+
+      {confirmDialog}
     </div>
   );
 }
-

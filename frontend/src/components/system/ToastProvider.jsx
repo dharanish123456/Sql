@@ -60,7 +60,10 @@ export default function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      <div className="toast-container position-fixed top-0 end-0 p-3" style={{ zIndex: 3000 }}>
+      <div
+        className="toast-container position-fixed top-0 start-50 translate-middle-x p-3 d-flex flex-column align-items-center"
+        style={{ zIndex: 3000, width: "min(320px, 90vw)", marginTop: "1rem" }}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -97,4 +100,3 @@ export function useToast() {
   }
   return context;
 }
-

@@ -3,10 +3,11 @@ package com.nexorcrm.backend.service;
 import com.nexorcrm.backend.dto.LeadChatMessageRequest;
 import com.nexorcrm.backend.dto.LeadChatMessageResponse;
 import com.nexorcrm.backend.entity.*;
-import com.nexorcrm.backend.repo.BoqRevisionRepository;
 import com.nexorcrm.backend.repo.LeadChatMessageRepository;
 import com.nexorcrm.backend.repo.LeadChatThreadRepository;
 import com.nexorcrm.backend.repo.LeadRepository;
+import com.nexorcrm.backend.repo.UserGroupMemberRepository;
+import com.nexorcrm.backend.repo.UserGroupRepository;
 import com.nexorcrm.backend.repo.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,20 +26,25 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class LeadChatService {
 
     private static final Logger log = LoggerFactory.getLogger(LeadChatService.class);
+    private static final String LEADS_PAGE_KEY = "leads";
     private final LeadRepository leadRepository;
     private final LeadChatThreadRepository threadRepository;
     private final LeadChatMessageRepository messageRepository;
-    private final BoqRevisionRepository boqRevisionRepository;
     private final UserRepository userRepository;
+    private final UserGroupRepository userGroupRepository;
+    private final UserGroupMemberRepository userGroupMemberRepository;
     private final EmailNotificationService emailNotificationService;
 
     @Value("${app.upload-dir:uploads}")
@@ -47,14 +53,16 @@ public class LeadChatService {
     public LeadChatService(LeadRepository leadRepository,
                            LeadChatThreadRepository threadRepository,
                            LeadChatMessageRepository messageRepository,
-                           BoqRevisionRepository boqRevisionRepository,
                            UserRepository userRepository,
+                           UserGroupRepository userGroupRepository,
+                           UserGroupMemberRepository userGroupMemberRepository,
                            EmailNotificationService emailNotificationService) {
         this.leadRepository = leadRepository;
         this.threadRepository = threadRepository;
         this.messageRepository = messageRepository;
-        this.boqRevisionRepository = boqRevisionRepository;
         this.userRepository = userRepository;
+        this.userGroupRepository = userGroupRepository;
+        this.userGroupMemberRepository = userGroupMemberRepository;
         this.emailNotificationService = emailNotificationService;
     }
 
@@ -92,6 +100,10 @@ public class LeadChatService {
         message.setSenderRole(actor.getRole());
         message.setMessage(request.getMessage());
         message.setMessageType(LeadChatMessageType.TEXT);
+        if (request.getDesignChoice() != null) {
+            message.setDesignAction(request.getDesignChoice().getAction());
+            message.setDesignComment(request.getDesignChoice().getComment());
+        }
         LeadChatMessage saved = messageRepository.save(message);
         maybeSendEmailNotification(lead, threadType, actor, saved);
         return toResponse(saved);
@@ -257,45 +269,7 @@ public class LeadChatService {
                 .toList();
     }
 
-    public void recordBoqSubmission(Lead lead, User actor, String notes) {
-        if (lead == null) return;
-        User sender = actor;
-        if (sender == null && StringUtils.hasText(lead.getOwner())) {
-            sender = userRepository.findByUsernameAndIsDeletedFalse(lead.getOwner()).orElse(null);
-        }
-        final User senderFinal = sender;
 
-        BoqRevision revision = new BoqRevision();
-        revision.setLead(lead);
-        if (sender != null) {
-            revision.setCreatedByUserId(sender.getId());
-            revision.setCreatedByRole(sender.getRole());
-        }
-        revision.setNotes(notes);
-        revision.setFileName(lead.getBoqFileName());
-        revision.setFilePath(lead.getBoqFilePath());
-        revision.setFileType(lead.getBoqFileType());
-        revision.setFileSize(lead.getBoqFileSize());
-        revision.setStatus(BoqRevisionStatus.SUBMITTED);
-        boqRevisionRepository.save(revision);
-
-        LeadChatThread thread = threadRepository
-                .findByLead_IdAndThreadType(lead.getId(), LeadChatThreadType.INTERNAL)
-                .orElseGet(() -> createThread(lead, LeadChatThreadType.INTERNAL, senderFinal));
-        LeadChatMessage message = new LeadChatMessage();
-        message.setThread(thread);
-        if (sender != null) {
-            message.setSenderUserId(sender.getId());
-            message.setSenderRole(sender.getRole());
-        }
-        message.setMessage(StringUtils.hasText(notes) ? notes : "BOQ submitted");
-        message.setMessageType(LeadChatMessageType.BOQ);
-        message.setAttachmentName(lead.getBoqFileName());
-        message.setAttachmentPath(lead.getBoqFilePath());
-        message.setAttachmentType(lead.getBoqFileType());
-        message.setAttachmentSize(lead.getBoqFileSize());
-        messageRepository.save(message);
-    }
 
     private LeadChatThread createThread(Lead lead, LeadChatThreadType threadType, User actor) {
         LeadChatThread thread = new LeadChatThread();
@@ -321,11 +295,132 @@ public class LeadChatService {
             if (lead.getOwnerUserId() == null || !lead.getOwnerUserId().equals(actor.getId())) {
                 throw new AccessDeniedException("You do not have permission to access this chat");
             }
+            if (threadType == LeadChatThreadType.CUSTOMER
+                    && "rejected".equalsIgnoreCase(StringUtils.trimWhitespace(lead.getStatus()))) {
+                throw new AccessDeniedException("Customer chat is closed for rejected leads");
+            }
         }
-        if (threadType == LeadChatThreadType.CUSTOMER || threadType == LeadChatThreadType.INTERNAL) {
+        if (threadType == LeadChatThreadType.CUSTOMER) {
             return;
         }
+        if (threadType == LeadChatThreadType.INTERNAL) {
+            if (actor.getRole() == Role.SUPER_ADMIN) {
+                return;
+            }
+            List<User> groupEmployees = loadGroupEmployees(lead);
+            if (actor.getRole() == Role.MANAGER) {
+                if (!isAssociatedManager(actor, groupEmployees)) {
+                    throw new AccessDeniedException("You do not have permission to access this chat");
+                }
+                return;
+            }
+            if (actor.getRole() == Role.ADMIN) {
+                if (!isAssociatedAdmin(actor, groupEmployees)) {
+                    throw new AccessDeniedException("You do not have permission to access this chat");
+                }
+                return;
+            }
+            throw new AccessDeniedException("You do not have permission to access this chat");
+        }
         throw new AccessDeniedException("You do not have permission to access this chat");
+    }
+
+    private List<User> loadGroupEmployees(Lead lead) {
+        if (lead == null || lead.getAssignedGroupId() == null) {
+            return List.of();
+        }
+        return userGroupRepository.findById(lead.getAssignedGroupId())
+                .map(userGroupMemberRepository::findByGroupOrderByUserUsernameAsc)
+                .orElse(List.of())
+                .stream()
+                .filter(this::memberHasLeadVisibility)
+                .map(UserGroupMember::getUser)
+                .filter(Objects::nonNull)
+                .filter(User::isActive)
+                .filter(user -> user.getActivationStatus() == ActivationStatus.ACTIVE)
+                .filter(user -> user.getRole() == Role.EMPLOYEE)
+                .toList();
+    }
+
+    private boolean memberHasLeadVisibility(UserGroupMember membership) {
+        String pageKeysCsv = membership == null ? null : membership.getPageKeysCsv();
+        if (!StringUtils.hasText(pageKeysCsv)) {
+            return true;
+        }
+        return parseCsv(pageKeysCsv).stream()
+                .anyMatch(value -> LEADS_PAGE_KEY.equalsIgnoreCase(value));
+    }
+
+    private boolean isAssociatedManager(User manager, List<User> groupEmployees) {
+        if (manager == null || groupEmployees == null || manager.getRole() != Role.MANAGER) {
+            return false;
+        }
+        return groupEmployees.stream().anyMatch(emp -> isSameTeamScope(emp, manager));
+    }
+
+    private boolean isAssociatedAdmin(User admin, List<User> groupEmployees) {
+        if (admin == null || groupEmployees == null || admin.getRole() != Role.ADMIN) {
+            return false;
+        }
+        return groupEmployees.stream().anyMatch(emp -> isSameDepartmentScope(emp, admin));
+    }
+
+    private boolean isSameTeamScope(User actor, User target) {
+        if (actor == null || target == null) {
+            return false;
+        }
+        if (!hasTeamScope(actor) || !hasTeamScope(target)) {
+            return false;
+        }
+        return textEquals(actor.getInstitutionName(), target.getInstitutionName())
+                && textEquals(actor.getInstitutionCategory(), target.getInstitutionCategory())
+                && textEquals(actor.getInstitutionType(), target.getInstitutionType())
+                && textEquals(actor.getDepartmentName(), target.getDepartmentName())
+                && textEquals(actor.getTeamName(), target.getTeamName());
+    }
+
+    private boolean isSameDepartmentScope(User actor, User target) {
+        if (actor == null || target == null) {
+            return false;
+        }
+        if (!hasDepartmentScope(actor) || !hasDepartmentScope(target)) {
+            return false;
+        }
+        return textEquals(actor.getInstitutionName(), target.getInstitutionName())
+                && textEquals(actor.getInstitutionCategory(), target.getInstitutionCategory())
+                && textEquals(actor.getInstitutionType(), target.getInstitutionType())
+                && textEquals(actor.getDepartmentName(), target.getDepartmentName());
+    }
+
+    private boolean hasTeamScope(User user) {
+        return hasDepartmentScope(user) && StringUtils.hasText(user.getTeamName());
+    }
+
+    private boolean hasDepartmentScope(User user) {
+        return user != null
+                && StringUtils.hasText(user.getInstitutionName())
+                && StringUtils.hasText(user.getInstitutionCategory())
+                && StringUtils.hasText(user.getInstitutionType())
+                && StringUtils.hasText(user.getDepartmentName());
+    }
+
+    private boolean textEquals(String a, String b) {
+        return normalizeNullable(a) != null && normalizeNullable(a).equalsIgnoreCase(StringUtils.hasText(b) ? b.trim() : "");
+    }
+
+    private String normalizeNullable(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        return value.trim();
+    }
+
+    private List<String> parseCsv(String csv) {
+        if (!StringUtils.hasText(csv)) {
+            return List.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
     }
 
     private LeadChatThreadType parseThreadType(String value) {
@@ -347,6 +442,11 @@ public class LeadChatService {
         res.setAttachmentName(message.getAttachmentName());
         res.setAttachmentType(message.getAttachmentType());
         res.setAttachmentSize(message.getAttachmentSize());
+        res.setDesignChoice(message.getDesignAction() != null ? new com.nexorcrm.backend.dto.DesignChoice() : null);
+        if (res.getDesignChoice() != null) {
+            res.getDesignChoice().setAction(message.getDesignAction());
+            res.getDesignChoice().setComment(message.getDesignComment());
+        }
         res.setCreatedAt(message.getCreatedAt());
         return res;
     }

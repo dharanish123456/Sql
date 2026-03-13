@@ -69,7 +69,7 @@ const InvoiceDetailsPage = () => {
 												<p className="mb-1">2077 Chicago Avenue Orosi, CA 93647</p>
 												<p className="mb-1">Email : <span className="text-dark"><a
 															href="cdn-cgi/l/email-protection" className="__cf_email__"
-															data-cfemail="e6b28794878a87d4d2d2d3a6839e878b968a83c885898b">[email&#160;protected]</Link></span>
+													data-cfemail="e6b28794878a87d4d2d2d3a6839e878b968a83c885898b">[email&#160;protected]</a></span>
 												</p>
 												<p>Phone : <span className="text-dark">+1 987 654 3210</span></p>
 											</div>
@@ -81,7 +81,7 @@ const InvoiceDetailsPage = () => {
 												<p className="mb-1">3103 Trainer Avenue Peoria, IL 61602</p>
 												<p className="mb-1">Email : <span className="text-dark"><a
 															href="cdn-cgi/l/email-protection" className="__cf_email__"
-															data-cfemail="5b083a293a04323538686f1b3e233a362b373e75383436">[email&#160;protected]</Link></span>
+													data-cfemail="5b083a293a04323538686f1b3e233a362b373e75383436">[email&#160;protected]</a></span>
 												</p>
 												<p>Phone : <span className="text-dark">+1 987 471 6589</span></p>
 											</div>
@@ -230,8 +230,7 @@ const InvoiceDetailsPage = () => {
 				</div>
       </div>
 
-      </div>
-		{/* /Page Wrapper */}
+      {/* /Page Wrapper */}
     </>
   );
 };

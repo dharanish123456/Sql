@@ -68,7 +68,7 @@ export default function CustomerStatusPage() {
           <ul className="customer-status__steps">
             <li>
               <span>Review</span>
-              <p>Our team is reviewing your enquiry and BOQ details.</p>
+              <p>Our team is reviewing your enquiry.</p>
             </li>
             <li>
               <span>Response</span>

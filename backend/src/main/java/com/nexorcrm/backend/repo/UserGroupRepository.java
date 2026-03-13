@@ -16,4 +16,6 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
             String institutionType,
             String departmentName
     );
+
+    java.util.Optional<UserGroup> findByNameIgnoreCase(String name);
 }

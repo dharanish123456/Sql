@@ -8,6 +8,7 @@ import com.nexorcrm.backend.service.LeadChatService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import com.nexorcrm.backend.dto.PaymentRequest;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -64,6 +65,13 @@ public class CustomerController {
     public LeadChatMessageResponse sendCustomerMessage(@RequestBody LeadChatMessageRequest request,
                                                        Authentication authentication) {
         return leadChatService.sendCustomerMessage(request, authentication.getName());
+    }
+
+    @PostMapping("/lead/payment")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public LeadResponse recordCustomerPayment(@RequestBody PaymentRequest request,
+                                               Authentication authentication) {
+        return leadService.recordCustomerPayment(authentication.getName(), request);
     }
 
     @PostMapping(value = "/chat/messages/file", consumes = {"multipart/form-data"})

@@ -254,45 +254,47 @@ export default function Sidebar() {
                       </li>
                     </ul>
                   </li>
-                  <li className="submenu">
-                    <a href="#" className=" ">
-                      <i className="ti ti-user-star"></i>
-                      <span>Super Admin</span>
-                      <span className="menu-arrow"></span>
-                    </a>
-                    <ul>
-                      <li>
-                        <a href="/admin-dashboard" className="">
-                          Admin Dashboard
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/companies" className="">
-                          Companies
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/subscription" className="">
-                          Subscriptions
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/packages" className="">
-                          Packages
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/domain" className="">
-                          Domain
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/purchase-transaction" className="">
-                          Purchase Transaction
-                        </a>
-                      </li>
-                    </ul>
-                  </li>
+              {role === "SUPER_ADMIN" && (
+                <li className="submenu">
+                  <a href="#" className=" ">
+                    <i className="ti ti-user-star"></i>
+                    <span>Super Admin</span>
+                    <span className="menu-arrow"></span>
+                  </a>
+                  <ul>
+                    <li>
+                      <a href="/admin-dashboard" className="">
+                        Admin Dashboard
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/companies" className="">
+                        Companies
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/subscription" className="">
+                        Subscriptions
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/packages" className="">
+                        Packages
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/domain" className="">
+                        Domain
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/purchase-transaction" className="">
+                        Purchase Transaction
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+              )}
                 </ul>
               </li>
 
@@ -346,6 +348,7 @@ export default function Sidebar() {
                       </a>
                     </li>
                   ) : null}
+
                   {role !== "EMPLOYEE" && (
                     <li className="">
                       <a href="/rejected-leads">
@@ -377,6 +380,46 @@ export default function Sidebar() {
                       <i className="ti ti-file-invoice"></i>
                       <span>Quotation</span>
                     </Link>
+                  </li>
+                  {/* Stocks section */}
+                  <li className="submenu">
+                    <a href="javascript:void(0);" className=" ">
+                      <i className="ti ti-stack"></i>
+                      <span>Stocks</span>
+                      <span className="menu-arrow"></span>
+                    </a>
+                    <ul>
+                      <li>
+                        <a href="/stocks">Dashboard</a>
+                      </li>
+                      <li>
+                        <a href="/stocks/item">Add Item</a>
+                      </li>
+                      <li>
+                        <a href="/stocks/categories">Categories</a>
+                      </li>
+                      <li>
+                        <a href="/stock-requests">Stock Requests</a>
+                      </li>
+                    </ul>
+                  </li>
+                  <li className="submenu">
+                    <a href="javascript:void(0);" className=" ">
+                      <i className="ti ti-building"></i>
+                      <span>Vendor Management</span>
+                      <span className="menu-arrow"></span>
+                    </a>
+                    <ul>
+                      <li>
+                        <a href="/stocks/vendors">Vendors</a>
+                      </li>
+                      <li>
+                        <a href="/stocks/brands">Brands</a>
+                      </li>
+                      <li>
+                        <a href="/stocks/vendor-types">Vendor Types</a>
+                      </li>
+                    </ul>
                   </li>
                   <li className="submenu">
                     <a href="javascript:void(0);" className=" ">

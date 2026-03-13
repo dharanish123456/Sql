@@ -25,7 +25,7 @@ const PrivacyPolicyPage = () => {
 					<div className="head-icons ms-2">
 						<a href="javascript:void(0);" className="" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-original-title="Collapse" id="collapse-header">
 							<i className="ti ti-chevrons-up"></i>
-						</Link>
+						</a>
 					</div>
 				</div>
 				
@@ -139,12 +139,8 @@ const PrivacyPolicyPage = () => {
 						</div>
 					</div>
 				</div>
-
-			</div>
-
-			
-
 		</div>
+
 		
     </>
   );

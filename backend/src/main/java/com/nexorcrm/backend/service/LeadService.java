@@ -10,6 +10,7 @@ import com.nexorcrm.backend.dto.LeadResponse;
 import com.nexorcrm.backend.dto.LeadUpdateAllocatorRequest;
 import com.nexorcrm.backend.dto.LeadUpdateStatusRequest;
 import com.nexorcrm.backend.dto.LeadUpdateDetailsRequest;
+import com.nexorcrm.backend.dto.PaymentRequest;
 import com.nexorcrm.backend.entity.ActivationStatus;
 import com.nexorcrm.backend.entity.ChannelPartner;
 import com.nexorcrm.backend.entity.Lead;
@@ -108,6 +109,61 @@ public class LeadService {
         this.leadChatService = leadChatService;
     }
 
+    /**
+     * Handle a payment request coming from a customer.
+     * Updates the paid and remaining amounts on the associated lead.
+     */
+    public LeadResponse recordCustomerPayment(String customerEmail, com.nexorcrm.backend.dto.PaymentRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Payment request required");
+        }
+        String type = request.getType() == null ? "" : request.getType().trim().toLowerCase();
+        BigDecimal amt = request.getAmount();
+        // if amount is missing/zero and caller asked for a full payment, default to
+        // whatever remains on the lead
+        if ((amt == null || amt.compareTo(BigDecimal.ZERO) <= 0) && "full".equals(type)) {
+            // will resolve later once we have the lead row
+        } else if (amt == null || amt.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be positive");
+        }
+        String emailNormalized = normalizeEmail(customerEmail);
+        Lead row = leadRepository.findTopByDeletedFalseAndEmailNormalizedOrderByCreatedAtDesc(emailNormalized)
+                .orElseThrow(() -> new EntityNotFoundException("Customer lead not found"));
+
+        if (row.getStatus() == null || !row.getStatus().equalsIgnoreCase("payment")) {
+            throw new IllegalStateException("Lead is not in payment status");
+        }
+
+        if ((amt == null || amt.compareTo(BigDecimal.ZERO) <= 0) && "full".equals(type)) {
+            // pay remaining amount (fallback to total if remaining is null)
+            amt = row.getRemainingAmount();
+            if (amt == null || amt.compareTo(BigDecimal.ZERO) <= 0) {
+                amt = row.getTotalAmount();
+            }
+        }
+        if (amt == null || amt.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be positive");
+        }
+
+        BigDecimal paid = row.getPaidAmount() == null ? BigDecimal.ZERO : row.getPaidAmount();
+        paid = paid.add(amt);
+        row.setPaidAmount(paid);
+        if (row.getTotalAmount() != null) {
+            BigDecimal rem = row.getTotalAmount().subtract(paid);
+            row.setRemainingAmount(rem.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : rem);
+        }
+
+        Lead saved = leadRepository.save(row);
+        Map<Long, String> cpNameMap = new HashMap<>();
+        if (saved.getChannelPartnerId() != null) {
+            channelPartnerRepository.findByIdAndDeletedFalse(saved.getChannelPartnerId()).ifPresent(cp ->
+                    cpNameMap.put(cp.getId(), StringUtils.hasText(cp.getCompanyName()) ? cp.getCompanyName() : cp.getPartnerName()));
+        }
+        Map<Long, String> groupNameMap = loadGroupNameMap(List.of(saved));
+        Map<Long, String> userNameMap = loadUserNameMap(List.of(saved));
+        return toResponse(saved, cpNameMap, groupNameMap, userNameMap);
+    }
+
     @Transactional(readOnly = true)
     public List<LeadResponse> list(String actorPrincipal,
                                    String search,
@@ -119,6 +175,7 @@ public class LeadService {
                                    String quickDate) {
         User actor = assertLeadAccess(actorPrincipal);
         Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
+        boolean paymentFilter = StringUtils.hasText(status) && status.equalsIgnoreCase("payment");
         List<Lead> rows = leadRepository.findByDeletedFalseOrderByCreatedAtDesc().stream()
                 .filter(row -> canViewLead(actor, row, visibleGroupIds))
                 .filter(row -> containsIgnoreCase(row.getName(), search)
@@ -126,7 +183,22 @@ public class LeadService {
                         || containsIgnoreCase(row.getEmail(), search))
                 .filter(row -> equalsIgnoreCase(row.getProjectName(), project))
                 .filter(row -> equalsIgnoreCase(row.getPrimarySource(), primary))
-                .filter(row -> equalsIgnoreCase(row.getStatus(), status))
+                .filter(row -> {
+                    if (paymentFilter) {
+                        // show all leads in payment status plus any lead that has
+                        // been moved into design while preserving the payment owner
+                        if ("payment".equalsIgnoreCase(row.getStatus())) {
+                            return true;
+                        }
+                        if ("design".equalsIgnoreCase(row.getStatus())
+                                && row.getPaymentOwnerId() != null
+                                && Objects.equals(row.getPaymentOwnerId(), actor.getId())) {
+                            return true;
+                        }
+                        return false;
+                    }
+                    return equalsIgnoreCase(row.getStatus(), status);
+                })
                 .filter(row -> equalsIgnoreCase(row.getSvStatus(), svStatus))
                 .filter(row -> equalsIgnoreCase(row.getOwner(), owner))
                 .filter(row -> matchQuickDate(row.getCreatedAt(), quickDate))
@@ -214,7 +286,17 @@ public class LeadService {
     @Transactional(readOnly = true)
     public List<LeadAssignableGroupResponse> listAssignableGroups(String actorPrincipal) {
         User actor = assertLeadAccess(actorPrincipal);
-        return findLeadVisibleGroupsForActor(actor).stream()
+        List<UserGroup> groups;
+        if (actor.getRole() == Role.SUPER_ADMIN) {
+            // flow editor should be able to pick any group, even if the group
+            // itself not yet marked as lead-visible.  previously the call
+            // delegated to findLeadVisibleGroupsForActor which filtered out such
+            // groups, causing freshly created groups to disappear from the dropdown.
+            groups = userGroupRepository.findAllByOrderByGroupLevelAscNameAsc();
+        } else {
+            groups = findLeadVisibleGroupsForActor(actor);
+        }
+        return groups.stream()
                 .map(this::toAssignableGroupResponse)
                 .toList();
     }
@@ -229,6 +311,7 @@ public class LeadService {
         String projectName = normalizeNullable(request.getProjectName());
         String email = normalizeNullable(request.getEmail());
         String emailNormalized = normalizeEmail(email);
+        String countryCode = normalizeNullable(request.getCountryCode());
         String mobile = request.getMobile().trim();
         String primarySource = request.getPrimarySource().trim();
         String mobileNormalized = normalizeMobile(mobile);
@@ -261,6 +344,7 @@ public class LeadService {
         row.setName(request.getName().trim());
         row.setEmail(email);
         row.setEmailNormalized(emailNormalized);
+        row.setCountryCode(countryCode);
         row.setMobile(mobile);
         row.setMobileNormalized(mobileNormalized);
         row.setPrimarySource(primarySource);
@@ -312,11 +396,50 @@ public class LeadService {
             throw new IllegalStateException("Invalid lead status");
         }
 
-        applyFlowStatusTransition(row, status);
-        Lead saved = leadRepository.save(row);
-        if ("boq".equalsIgnoreCase(status)) {
-            ensureCustomerAccount(saved, actor);
+        // special case: transitioning to Stock Requested is just a label change
+        // for the lead; we do *not* want to reassign the lead to the accounts
+        // group or touch its owner. the stock request record itself is
+        // responsible for assignment. just save the status and skip the flow
+        // logic entirely.
+        if ("stock requested".equalsIgnoreCase(status)) {
+            row.setStatus(status);
+            Lead saved = leadRepository.save(row);
+            auditService.log("LEAD_STATUS_UPDATE", "Updated lead status to " + saved.getStatus(), actor.getEmail());
+            createLeadLog(saved.getId(), "Status changed to " + saved.getStatus(), actor);
+
+            Map<Long, String> cpNameMap = new HashMap<>();
+            if (saved.getChannelPartnerId() != null) {
+                channelPartnerRepository.findByIdAndDeletedFalse(saved.getChannelPartnerId()).ifPresent(cp ->
+                        cpNameMap.put(cp.getId(), StringUtils.hasText(cp.getCompanyName()) ? cp.getCompanyName() : cp.getPartnerName()));
+            }
+            Map<Long, String> groupNameMap = loadGroupNameMap(List.of(saved));
+            Map<Long, String> userNameMap = loadUserNameMap(List.of(saved));
+            return toResponse(saved, cpNameMap, groupNameMap, userNameMap);
         }
+
+        // if switching from payment into either design or production remember
+        // the original payment owner before we potentially overwrite the owner via
+        // the round‑robin assignment done by applyFlowStatusTransition. the
+        // frontend already takes care of storing the owner as well but keeping it
+        // here makes the behaviour consistent for any callers that bypass the UI.
+        if ("payment".equalsIgnoreCase(row.getStatus())
+                && ("design".equalsIgnoreCase(status) || "production".equalsIgnoreCase(status))
+                && row.getOwnerUserId() != null) {
+            row.setPaymentOwnerId(row.getOwnerUserId());
+        }
+
+        applyFlowStatusTransition(row, status, request.getNextGroupId());
+        // when moving back to payment restore previous owner if present
+        if ("payment".equalsIgnoreCase(status)) {
+            if (row.getPaymentOwnerId() != null) {
+                row.setOwnerUserId(row.getPaymentOwnerId());
+                row.setOwner(resolveOwnerName(userRepository.findById(row.getPaymentOwnerId()).orElse(null)));
+                row.setPaymentOwnerId(null);
+            }
+        } else if (!"design".equalsIgnoreCase(status) && !"production".equalsIgnoreCase(status)) {
+            row.setPaymentOwnerId(null);
+        }
+        Lead saved = leadRepository.save(row);
         auditService.log("LEAD_STATUS_UPDATE", "Updated lead status", actor.getEmail());
         createLeadLog(saved.getId(), "Status changed to " + saved.getStatus(), actor);
 
@@ -701,6 +824,43 @@ public class LeadService {
         if (request.getRejectedReasonSubtype() != null) {
             row.setRejectedReasonSubtype(normalizeNullable(request.getRejectedReasonSubtype()));
         }
+        // payment tracking fields
+        if (request.getTotalAmount() != null) {
+            row.setTotalAmount(request.getTotalAmount());
+        }
+        if (request.getPaidAmount() != null) {
+            row.setPaidAmount(request.getPaidAmount());
+        }
+        if (request.getRemainingAmount() != null) {
+            row.setRemainingAmount(request.getRemainingAmount());
+        }
+        if (request.getDesignStartAt() != null) {
+            row.setDesignStartAt(request.getDesignStartAt());
+        }
+        if (request.getDesignEndAt() != null) {
+            row.setDesignEndAt(request.getDesignEndAt());
+        }
+        if (request.getPaymentOwnerId() != null) {
+            row.setPaymentOwnerId(request.getPaymentOwnerId());
+        }
+        if (request.getRequirementType() != null) {
+            row.setRequirementType(normalizeNullable(request.getRequirementType()));
+        }
+        if (request.getRequirementFileName() != null) {
+            row.setRequirementFileName(normalizeNullable(request.getRequirementFileName()));
+        }
+        if (request.getRequirementFilePath() != null) {
+            row.setRequirementFilePath(normalizeNullable(request.getRequirementFilePath()));
+        }
+        if (request.getRequirementFileType() != null) {
+            row.setRequirementFileType(normalizeNullable(request.getRequirementFileType()));
+        }
+        if (request.getRequirementFileSize() != null) {
+            row.setRequirementFileSize(request.getRequirementFileSize());
+        }
+        if (request.getRequirementNotes() != null) {
+            row.setRequirementNotes(normalizeNullable(request.getRequirementNotes()));
+        }
 
         Lead saved = leadRepository.save(row);
         auditService.log("LEAD_DETAILS_UPDATE", "Updated lead details", actor.getEmail());
@@ -732,59 +892,6 @@ public class LeadService {
         leadRepository.save(row);
         auditService.log("LEAD_DELETE", "Deleted lead " + row.getLeadId(), actor.getEmail());
         createLeadLog(row.getId(), "Lead deleted", actor);
-    }
-
-    public LeadResponse updateBoq(Long id, BigDecimal amount, String notes, MultipartFile file, String actorPrincipal) {
-        User actor = assertLeadAccess(actorPrincipal);
-        Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
-        Lead row = leadRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new EntityNotFoundException("Lead not found"));
-        if (!canViewLead(actor, row, visibleGroupIds)) {
-            throw new AccessDeniedException("You do not have permission to update this lead");
-        }
-        if (!canEditLead(actor, row)) {
-            throw new AccessDeniedException("Only the current owner can update this lead");
-        }
-
-        if (amount != null) {
-            row.setBoqAmount(amount);
-        }
-        if (notes != null) {
-            row.setBoqNotes(normalizeNullable(notes));
-        }
-        if (file != null && !file.isEmpty()) {
-            applyBoqFile(row, file);
-        }
-
-        Lead saved = leadRepository.save(row);
-        leadChatService.recordBoqSubmission(saved, actor, notes);
-        auditService.log("LEAD_BOQ_UPDATE", "Updated BOQ details", actor.getEmail());
-        createLeadLog(saved.getId(), "BOQ updated", actor);
-
-        Map<Long, String> cpNameMap = new HashMap<>();
-        if (saved.getChannelPartnerId() != null) {
-            channelPartnerRepository.findByIdAndDeletedFalse(saved.getChannelPartnerId()).ifPresent(cp ->
-                    cpNameMap.put(cp.getId(), StringUtils.hasText(cp.getCompanyName()) ? cp.getCompanyName() : cp.getPartnerName()));
-        }
-        Map<Long, String> groupNameMap = loadGroupNameMap(List.of(saved));
-        Map<Long, String> userNameMap = loadUserNameMap(List.of(saved));
-
-        return toResponse(saved, cpNameMap, groupNameMap, userNameMap);
-    }
-
-    @Transactional(readOnly = true)
-    public Lead getBoqFileEntry(Long id, String actorPrincipal) {
-        User actor = assertLeadAccess(actorPrincipal);
-        Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
-        Lead row = leadRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new EntityNotFoundException("Lead not found"));
-        if (!canViewLead(actor, row, visibleGroupIds)) {
-            throw new AccessDeniedException("You do not have permission to access this lead");
-        }
-        if (!StringUtils.hasText(row.getBoqFilePath())) {
-            throw new EntityNotFoundException("BOQ file not found");
-        }
-        return row;
     }
 
     @Transactional(readOnly = true)
@@ -826,9 +933,19 @@ public class LeadService {
         if (!"payment".equalsIgnoreCase(status) && !"rejected".equalsIgnoreCase(status)) {
             throw new IllegalStateException("Customer can only select Payment or Rejected");
         }
+        if ("rejected".equalsIgnoreCase(status) && !StringUtils.hasText(request.getRejectedReason())) {
+            throw new IllegalStateException("Rejected reason is required");
+        }
 
         Lead lead = findCustomerLead(actor);
-        applyFlowStatusTransition(lead, status);
+        applyFlowStatusTransition(lead, status, null);
+        if ("rejected".equalsIgnoreCase(status)) {
+            lead.setRejectedReason(normalizeNullable(request.getRejectedReason()));
+            lead.setRejectedReasonSubtype(normalizeNullable(request.getRejectedReasonSubtype()));
+        } else {
+            lead.setRejectedReason(null);
+            lead.setRejectedReasonSubtype(null);
+        }
         Lead saved = leadRepository.save(lead);
         auditService.log("LEAD_STATUS_UPDATE", "Customer updated lead status to " + status, actor.getEmail());
         createLeadLog(saved.getId(), "Status changed to " + saved.getStatus(), actor);
@@ -943,8 +1060,17 @@ public class LeadService {
             return true;
         }
         if (actor.getRole() == Role.EMPLOYEE) {
-            return row.getOwnerUserId() != null
-                    && Objects.equals(row.getOwnerUserId(), actor.getId());
+            // employees see leads they currently own
+            if (row.getOwnerUserId() != null && Objects.equals(row.getOwnerUserId(), actor.getId())) {
+                return true;
+            }
+            // during design/production the payment handler still has read access
+            if (("design".equalsIgnoreCase(row.getStatus()) || "production".equalsIgnoreCase(row.getStatus()))
+                    && row.getPaymentOwnerId() != null
+                    && Objects.equals(row.getPaymentOwnerId(), actor.getId())) {
+                return true;
+            }
+            return false;
         }
         if (row.getAssignedGroupId() != null) {
             return visibleGroupIds.contains(row.getAssignedGroupId());
@@ -1040,8 +1166,12 @@ public class LeadService {
             FlowRule currentRule = findFlowRule(rules, currentStatus);
             FlowRule targetRule = findFlowRule(rules, nextStatus);
             Long nextGroupId = currentRule != null ? currentRule.nextGroupIdFor(nextStatus) : null;
+            // Check target rule before falling back to current rule
             if (nextGroupId == null && targetRule != null) {
                 nextGroupId = targetRule.handledByGroupId;
+            }
+            if (nextGroupId == null && currentRule != null && currentRule.handledByGroupId != null) {
+                nextGroupId = currentRule.handledByGroupId;
             }
             return nextGroupId;
         } catch (Exception e) {
@@ -1049,7 +1179,7 @@ public class LeadService {
         }
     }
 
-    private void applyFlowStatusTransition(Lead row, String nextStatus) {
+    private void applyFlowStatusTransition(Lead row, String nextStatus, Long forcedNextGroupId) {
         if (row == null || !StringUtils.hasText(nextStatus)) {
             return;
         }
@@ -1072,19 +1202,135 @@ public class LeadService {
             throw new IllegalStateException("This status transition is not allowed by flow");
         }
 
+        // Determine current group ID
+        Long currentGroupId = row.getAssignedGroupId();
+        if (currentGroupId == null && currentRule != null) {
+            currentGroupId = currentRule.handledByGroupId;
+        }
+
+        // Resolve next group ID from flow rules
+        Long nextGroupId = forcedNextGroupId;
+        if (nextGroupId == null) {
+            nextGroupId = currentRule != null ? currentRule.nextGroupIdFor(nextStatus) : null;
+            if (nextGroupId == null && targetRule != null) {
+                nextGroupId = targetRule.handledByGroupId;
+            }
+            if (nextGroupId == null && currentRule != null && currentRule.handledByGroupId != null) {
+                nextGroupId = currentRule.handledByGroupId;
+            }
+        }
+
+        // Determine if the group is changing
+        boolean groupChanging = currentGroupId == null || nextGroupId == null || !currentGroupId.equals(nextGroupId);
+
+        // When leaving a tracked status, save the current owner for later restoration
+        if (shouldTrackOwnerForStatus(currentStatus) && row.getOwnerUserId() != null) {
+            setStatusOwner(row, currentStatus, row.getOwnerUserId());
+        }
+
         row.setStatus(nextStatus);
 
-        Long nextGroupId = currentRule != null ? currentRule.nextGroupIdFor(nextStatus) : null;
-        if (nextGroupId == null && targetRule != null) {
-            nextGroupId = targetRule.handledByGroupId;
-        }
         if (nextGroupId != null) {
             row.setAssignedGroupId(nextGroupId);
-            if ("payment".equalsIgnoreCase(nextStatus)) {
-                User owner = resolveRoundRobinOwnerForGroup(nextGroupId);
-                row.setOwnerUserId(owner.getId());
-                row.setOwner(owner.getUsername());
+        }
+
+        // Only reassign/restore owner if the group is changing
+        // If staying in the same group, keep the current owner
+        if (groupChanging && shouldTrackOwnerForStatus(nextStatus)) {
+            Long ownerGroupId = nextGroupId != null ? nextGroupId : row.getAssignedGroupId();
+            if (ownerGroupId != null) {
+                try {
+                    applySavedOrRoundRobinOwner(row, nextStatus, ownerGroupId);
+                } catch (IllegalStateException ise) {
+                    throw new IllegalStateException("Cannot move lead to " + nextStatus + ": " + ise.getMessage());
+                }
             }
+        }
+    }
+
+    /**
+     * Determine if we should save/restore the owner for a given status.
+     * Currently tracked: payment, design, production
+     */
+    private boolean shouldTrackOwnerForStatus(String status) {
+        if (!StringUtils.hasText(status)) return false;
+        String lower = status.trim().toLowerCase();
+        return lower.equals("payment") || lower.equals("design") || lower.equals("production");
+    }
+
+    /**
+     * Set the saved owner for a status (for future restoration).
+     */
+    private void setStatusOwner(Lead lead, String status, Long userId) {
+        if (!StringUtils.hasText(status)) return;
+        String lower = status.trim().toLowerCase();
+        switch (lower) {
+            case "payment":
+                lead.setPaymentOwnerId(userId);
+                break;
+            case "design":
+                lead.setDesignOwnerId(userId);
+                break;
+            case "production":
+                lead.setProductionOwnerId(userId);
+                break;
+        }
+    }
+
+    /**
+     * Get the saved owner for a status (for restoration).
+     */
+    private Long getStatusOwner(Lead lead, String status) {
+        if (!StringUtils.hasText(status)) return null;
+        String lower = status.trim().toLowerCase();
+        switch (lower) {
+            case "payment":
+                return lead.getPaymentOwnerId();
+            case "design":
+                return lead.getDesignOwnerId();
+            case "production":
+                return lead.getProductionOwnerId();
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Restore saved owner if available and active, otherwise do round-robin and save the new owner.
+     */
+    private void applySavedOrRoundRobinOwner(Lead lead, String nextStatus, Long ownerGroupId) {
+        Long savedOwnerId = getStatusOwner(lead, nextStatus);
+
+        if (savedOwnerId != null) {
+            // Try to restore the saved owner if still active
+            userRepository.findById(savedOwnerId).ifPresentOrElse(owner -> {
+                if (owner.isActive() && owner.getActivationStatus() == ActivationStatus.ACTIVE) {
+                    // Saved owner is still active, use them
+                    lead.setOwnerUserId(owner.getId());
+                    lead.setOwner(resolveOwnerName(owner));
+                } else {
+                    // Saved owner is inactive, do round-robin instead
+                    User newOwner = resolveRoundRobinOwnerForGroup(ownerGroupId);
+                    lead.setOwnerUserId(newOwner.getId());
+                    lead.setOwner(resolveOwnerName(newOwner));
+                    // Update the saved owner for next time
+                    setStatusOwner(lead, nextStatus, newOwner.getId());
+                }
+            }, () -> {
+                // Saved owner not found, do round-robin instead
+                User newOwner = resolveRoundRobinOwnerForGroup(ownerGroupId);
+                lead.setOwnerUserId(newOwner.getId());
+                lead.setOwner(resolveOwnerName(newOwner));
+                // Update the saved owner for next time
+                setStatusOwner(lead, nextStatus, newOwner.getId());
+            });
+        } else {
+            // No saved owner, do round-robin and save it
+            User owner = resolveRoundRobinOwnerForGroup(ownerGroupId);
+            lead.setOwnerUserId(owner.getId());
+            lead.setOwner(resolveOwnerName(owner));
+            // Save this owner for future transitions to this status
+            setStatusOwner(lead, nextStatus, owner.getId());
         }
     }
 
@@ -1169,6 +1415,60 @@ public class LeadService {
             counter++;
         }
         return candidate;
+    }
+
+    /**
+     * After updating the flow rules we may need to reassign leads that are
+     * already in a status whose handler group has changed.  This method is
+     * called by LeadFlowService.updateFlow().
+     *
+     * For each rule with a non-null handledByGroupId we load all non-deleted
+     * leads matching that status, set their assignedGroupId to the new value,
+     * attempt a round-robin owner assignment, clear any stale payment-owner
+     * marker, and save the lead.  If there are no eligible employees in the
+     * group we still clear the owner so the record becomes un-owned; the group
+     * itself can later be allocated manually.
+     */
+    @Transactional
+    public void reassignLeadsForFlow(List<Map<String, Object>> rules) {
+        if (rules == null) return;
+        for (Map<String, Object> raw : rules) {
+            if (raw == null) continue;
+            Object statusVal = raw.get("status");
+            if (statusVal == null) continue;
+            String status = statusVal.toString().trim();
+            if (!StringUtils.hasText(status)) continue;
+            Long groupId = toLong(raw.get("handledByGroupId"));
+            if (groupId == null) continue;
+
+            List<Lead> leads = leadRepository.findByDeletedFalseOrderByCreatedAtDesc()
+                    .stream()
+                    .filter(l -> status.equalsIgnoreCase(l.getStatus()))
+                    .toList();
+            for (Lead lead : leads) {
+                lead.setAssignedGroupId(groupId);
+                try {
+                    User owner = resolveRoundRobinOwnerForGroup(groupId);
+                    lead.setOwnerUserId(owner.getId());
+                    lead.setOwner(resolveOwnerName(owner));
+                } catch (IllegalStateException ise) {
+                    // no active employee available - clear owner so it can be
+                    // manually picked later
+                    lead.setOwnerUserId(null);
+                    lead.setOwner(null);
+                }
+                // once we've deliberately moved the lead to a new group the
+                // previous payment owner is no longer relevant
+                lead.setPaymentOwnerId(null);
+                leadRepository.save(lead);
+                try {
+                    auditService.log("LEAD_FLOW_REASSIGN",
+                            "Reassigned lead " + lead.getLeadId() + " to group " + groupId,
+                            null);
+                } catch (Exception ignore) {
+                }
+            }
+        }
     }
 
     private static final class FlowRule {
@@ -1282,28 +1582,7 @@ public class LeadService {
                 && textEquals(actor.getDepartmentName(), target.getDepartmentName());
     }
 
-    private void applyBoqFile(Lead row, MultipartFile file) {
-        try {
-            Path dir = Path.of(uploadDir, "boq");
-            Files.createDirectories(dir);
 
-            String original = file.getOriginalFilename();
-            String ext = "";
-            if (StringUtils.hasText(original) && original.contains(".")) {
-                ext = original.substring(original.lastIndexOf("."));
-            }
-            String storedName = "boq_" + UUID.randomUUID().toString().replace("-", "") + ext;
-            Path target = dir.resolve(storedName);
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-
-            row.setBoqFileName(original);
-            row.setBoqFilePath(target.toString());
-            row.setBoqFileType(file.getContentType());
-            row.setBoqFileSize(file.getSize());
-        } catch (Exception e) {
-            throw new RuntimeException("BOQ file upload failed");
-        }
-    }
 
     private UserGroup resolveLeadGroupForCreate(User actor, Long requestedGroupId) {
         List<UserGroup> availableGroups = findLeadVisibleGroupsForActor(actor);
@@ -1410,12 +1689,20 @@ public class LeadService {
     }
 
     private boolean hasLeadVisibility(UserGroup group) {
-        return parseCsv(group == null ? null : group.getPageKeysCsv()).stream()
+        String pageKeysCsv = group == null ? null : group.getPageKeysCsv();
+        if (!StringUtils.hasText(pageKeysCsv)) {
+            return true;
+        }
+        return parseCsv(pageKeysCsv).stream()
                 .anyMatch(value -> LEADS_PAGE_KEY.equalsIgnoreCase(value));
     }
 
     private boolean memberHasLeadVisibility(UserGroupMember membership) {
-        return parseCsv(membership == null ? null : membership.getPageKeysCsv()).stream()
+        String pageKeysCsv = membership == null ? null : membership.getPageKeysCsv();
+        if (!StringUtils.hasText(pageKeysCsv)) {
+            return true;
+        }
+        return parseCsv(pageKeysCsv).stream()
                 .anyMatch(value -> LEADS_PAGE_KEY.equalsIgnoreCase(value));
     }
 
@@ -1483,12 +1770,24 @@ public class LeadService {
         res.setInterestedCallRemarks(row.getInterestedCallRemarks());
         res.setRejectedReason(row.getRejectedReason());
         res.setRejectedReasonSubtype(row.getRejectedReasonSubtype());
-        res.setBoqAmount(row.getBoqAmount());
-        res.setBoqFileName(row.getBoqFileName());
-        res.setBoqFilePath(row.getBoqFilePath());
-        res.setBoqFileType(row.getBoqFileType());
-        res.setBoqFileSize(row.getBoqFileSize());
-        res.setBoqNotes(row.getBoqNotes());
+        // payment tracking
+        res.setTotalAmount(row.getTotalAmount());
+        res.setPaidAmount(row.getPaidAmount());
+        res.setRemainingAmount(row.getRemainingAmount());
+        res.setDesignStartAt(row.getDesignStartAt());
+        res.setDesignEndAt(row.getDesignEndAt());
+        // if the lead is currently in design phase but a payment employee still
+        // owns it this field carries the original owner so the frontend can
+        // restore them when the status flips back to payment.
+        res.setPaymentOwnerId(row.getPaymentOwnerId());
+        res.setProductionOwnerId(row.getProductionOwnerId());
+        // requirement values
+        res.setRequirementType(row.getRequirementType());
+        res.setRequirementFileName(row.getRequirementFileName());
+        res.setRequirementFilePath(row.getRequirementFilePath());
+        res.setRequirementFileType(row.getRequirementFileType());
+        res.setRequirementFileSize(row.getRequirementFileSize());
+        res.setRequirementNotes(row.getRequirementNotes());
         res.setCreatedAt(row.getCreatedAt());
         return res;
     }
@@ -1528,6 +1827,25 @@ public class LeadService {
         res.setActor(log.getActor());
         res.setCreatedAt(log.getCreatedAt());
         return res;
+    }
+
+    private String resolveOwnerName(User user) {
+        if (user == null) {
+            return "Unassigned";
+        }
+        if (StringUtils.hasText(user.getUsername())) {
+            return user.getUsername().trim();
+        }
+        if (StringUtils.hasText(user.getEmail())) {
+            return user.getEmail().trim();
+        }
+        String firstName = StringUtils.hasText(user.getFirstName()) ? user.getFirstName().trim() : "";
+        String lastName = StringUtils.hasText(user.getLastName()) ? user.getLastName().trim() : "";
+        String fullName = (firstName + " " + lastName).trim();
+        if (StringUtils.hasText(fullName)) {
+            return fullName;
+        }
+        return "User-" + user.getId();
     }
 
     private Map<Long, String> loadChannelPartnerNameMap(List<Lead> leads) {

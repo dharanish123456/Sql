@@ -1,6 +1,7 @@
 package com.nexorcrm.backend.dto;
 
 import java.time.LocalDateTime;
+import com.nexorcrm.backend.dto.DesignChoice;
 
 public class LeadChatMessageResponse {
     private Long id;
@@ -13,6 +14,8 @@ public class LeadChatMessageResponse {
     private String attachmentType;
     private Long attachmentSize;
     private LocalDateTime createdAt;
+    // optional information about a design-related choice
+    private DesignChoice designChoice;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -34,4 +37,6 @@ public class LeadChatMessageResponse {
     public void setAttachmentSize(Long attachmentSize) { this.attachmentSize = attachmentSize; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public DesignChoice getDesignChoice() { return designChoice; }
+    public void setDesignChoice(DesignChoice designChoice) { this.designChoice = designChoice; }
 }

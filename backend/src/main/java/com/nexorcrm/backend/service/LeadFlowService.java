@@ -6,6 +6,7 @@ import com.nexorcrm.backend.dto.LeadFlowRequest;
 import com.nexorcrm.backend.dto.LeadFlowResponse;
 import com.nexorcrm.backend.entity.LeadFlowConfig;
 import com.nexorcrm.backend.repo.LeadFlowConfigRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -21,11 +22,14 @@ public class LeadFlowService {
 
     private final LeadFlowConfigRepository leadFlowConfigRepository;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<LeadService> leadServiceProvider;
 
     public LeadFlowService(LeadFlowConfigRepository leadFlowConfigRepository,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           ObjectProvider<LeadService> leadServiceProvider) {
         this.leadFlowConfigRepository = leadFlowConfigRepository;
         this.objectMapper = objectMapper;
+        this.leadServiceProvider = leadServiceProvider;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +55,21 @@ public class LeadFlowService {
             config.setUpdatedBy(actorPrincipal);
         }
         LeadFlowConfig saved = leadFlowConfigRepository.save(config);
+
+        // after updating the flow configuration we need to ensure any existing
+        // leads that are currently sitting in a status whose handled-by group was
+        // just changed get reassigned to a member of the new group.  this keeps
+        // the UI consistent (owner matches the flow) and prevents leads from
+        // remaining owned by a payment user when they should belong to another team.
+        try {
+            LeadService leadService = leadServiceProvider.getIfAvailable();
+            if (leadService != null) {
+                leadService.reassignLeadsForFlow(request.getRules());
+            }
+        } catch (Exception ignore) {
+            // don't let reassign failures block the flow update
+        }
+
         return toResponse(saved);
     }
 

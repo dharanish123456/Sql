@@ -12,6 +12,9 @@ public class LeadCreateRequest {
     @Size(max = 190, message = "Email must be at most 190 characters")
     private String email;
 
+    @Size(max = 20, message = "Country Code must be at most 20 characters")
+    private String countryCode;
+
     @NotBlank(message = "Mobile is required")
     @Size(max = 40, message = "Mobile must be at most 40 characters")
     private String mobile;
@@ -50,6 +53,14 @@ public class LeadCreateRequest {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getCountryCode() {
+        return countryCode;
+    }
+
+    public void setCountryCode(String countryCode) {
+        this.countryCode = countryCode;
     }
 
     public String getMobile() {

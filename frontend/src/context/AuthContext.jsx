@@ -107,10 +107,19 @@ export function AuthProvider({ children }) {
         setAccessToken(nextAccess);
         setAccessTokenState(nextAccess);
         setUser(userFromToken(nextAccess, "", response.data));
-      } catch {
+      } catch (error) {
+        console.warn(
+          "[AuthContext] Session restore failed:",
+          error?.response?.status === 401
+            ? "Refresh token expired - user will be redirected to login"
+            : error?.message || "Unknown error"
+        );
         clearTokens();
         setUser(null);
         setAccessTokenState(null);
+        if (window.location.pathname !== "/login") {
+          window.location.assign("/login");
+        }
       } finally {
         setLoading(false);
       }

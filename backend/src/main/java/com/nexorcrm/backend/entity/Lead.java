@@ -115,22 +115,61 @@ public class Lead {
     @Column(name = "rejected_reason_subtype", length = 500)
     private String rejectedReasonSubtype;
 
-    @Column(name = "boq_amount", precision = 14, scale = 2)
-    private java.math.BigDecimal boqAmount;
+    // payment tracking
+    @Column(name = "total_amount", precision = 14, scale = 2)
+    private java.math.BigDecimal totalAmount;
 
-    @Column(name = "boq_file_name", length = 255)
-    private String boqFileName;
+    @Column(name = "paid_amount", precision = 14, scale = 2)
+    private java.math.BigDecimal paidAmount;
 
-    @Column(name = "boq_file_path", length = 500)
-    private String boqFilePath;
+    @Column(name = "remaining_amount", precision = 14, scale = 2)
+    private java.math.BigDecimal remainingAmount;
 
-    @Column(name = "boq_file_type", length = 120)
-    private String boqFileType;
+    @Column(name = "design_start_at")
+    private LocalDateTime designStartAt;
 
-    @Column(name = "boq_file_size")
-    private Long boqFileSize;
-    @Column(name = "boq_notes", columnDefinition = "text")
-    private String boqNotes;
+    @Column(name = "design_end_at")
+    private LocalDateTime designEndAt;
+
+    // owner of the lead while it is in payment status; preserved when the lead
+    // moves into "design" so we can restore ownership when it returns to
+    // payment. not null only during design phase.
+    @Column(name = "payment_owner_id")
+    private Long paymentOwnerId;
+
+    // when a lead is sent into design we choose an employee from the
+    // design group with a round‑robin algorithm. if the lead leaves
+    // design and later returns, we want to restore the same employee
+    // rather than picking a new one.
+    @Column(name = "design_owner_id")
+    private Long designOwnerId;
+
+    // when a lead is sent into production we choose an employee from the
+    // production group with a round‑robin algorithm. if the lead leaves
+    // production and later returns, we want to restore the same employee
+    // rather than picking a new one; this field holds the previously assigned
+    // production owner until it has been reapplied. cleared when used.
+    @Column(name = "production_owner_id")
+    private Long productionOwnerId;
+
+    // requirement fields
+    @Column(name = "requirement_type", length = 100)
+    private String requirementType;
+
+    @Column(name = "requirement_file_name", length = 200)
+    private String requirementFileName;
+
+    @Column(name = "requirement_file_path", length = 1000)
+    private String requirementFilePath;
+
+    @Column(name = "requirement_file_type", length = 100)
+    private String requirementFileType;
+
+    @Column(name = "requirement_file_size")
+    private Long requirementFileSize;
+
+    @Column(name = "requirement_notes", columnDefinition = "LONGTEXT")
+    private String requirementNotes;
 
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
@@ -217,18 +256,49 @@ public class Lead {
     public void setRejectedReason(String rejectedReason) { this.rejectedReason = rejectedReason; }
     public String getRejectedReasonSubtype() { return rejectedReasonSubtype; }
     public void setRejectedReasonSubtype(String rejectedReasonSubtype) { this.rejectedReasonSubtype = rejectedReasonSubtype; }
-    public java.math.BigDecimal getBoqAmount() { return boqAmount; }
-    public void setBoqAmount(java.math.BigDecimal boqAmount) { this.boqAmount = boqAmount; }
-    public String getBoqFileName() { return boqFileName; }
-    public void setBoqFileName(String boqFileName) { this.boqFileName = boqFileName; }
-    public String getBoqFilePath() { return boqFilePath; }
-    public void setBoqFilePath(String boqFilePath) { this.boqFilePath = boqFilePath; }
-    public String getBoqFileType() { return boqFileType; }
-    public void setBoqFileType(String boqFileType) { this.boqFileType = boqFileType; }
-    public Long getBoqFileSize() { return boqFileSize; }
-    public void setBoqFileSize(Long boqFileSize) { this.boqFileSize = boqFileSize; }
-    public String getBoqNotes() { return boqNotes; }
-    public void setBoqNotes(String boqNotes) { this.boqNotes = boqNotes; }
+
+    public java.math.BigDecimal getTotalAmount() { return totalAmount; }
+    public void setTotalAmount(java.math.BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+
+    public java.math.BigDecimal getPaidAmount() { return paidAmount; }
+    public void setPaidAmount(java.math.BigDecimal paidAmount) { this.paidAmount = paidAmount; }
+
+    public java.math.BigDecimal getRemainingAmount() { return remainingAmount; }
+    public void setRemainingAmount(java.math.BigDecimal remainingAmount) { this.remainingAmount = remainingAmount; }
+
+    public LocalDateTime getDesignStartAt() { return designStartAt; }
+    public void setDesignStartAt(LocalDateTime designStartAt) { this.designStartAt = designStartAt; }
+
+    public LocalDateTime getDesignEndAt() { return designEndAt; }
+    public void setDesignEndAt(LocalDateTime designEndAt) { this.designEndAt = designEndAt; }
+
+    public Long getPaymentOwnerId() { return paymentOwnerId; }
+    public void setPaymentOwnerId(Long paymentOwnerId) { this.paymentOwnerId = paymentOwnerId; }
+
+    public Long getDesignOwnerId() { return designOwnerId; }
+    public void setDesignOwnerId(Long designOwnerId) { this.designOwnerId = designOwnerId; }
+
+    public Long getProductionOwnerId() { return productionOwnerId; }
+    public void setProductionOwnerId(Long productionOwnerId) { this.productionOwnerId = productionOwnerId; }
+
+    public String getRequirementType() { return requirementType; }
+    public void setRequirementType(String requirementType) { this.requirementType = requirementType; }
+
+    public String getRequirementFileName() { return requirementFileName; }
+    public void setRequirementFileName(String requirementFileName) { this.requirementFileName = requirementFileName; }
+
+    public String getRequirementFilePath() { return requirementFilePath; }
+    public void setRequirementFilePath(String requirementFilePath) { this.requirementFilePath = requirementFilePath; }
+
+    public String getRequirementFileType() { return requirementFileType; }
+    public void setRequirementFileType(String requirementFileType) { this.requirementFileType = requirementFileType; }
+
+    public Long getRequirementFileSize() { return requirementFileSize; }
+    public void setRequirementFileSize(Long requirementFileSize) { this.requirementFileSize = requirementFileSize; }
+
+    public String getRequirementNotes() { return requirementNotes; }
+    public void setRequirementNotes(String requirementNotes) { this.requirementNotes = requirementNotes; }
+
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }
     public LocalDateTime getCreatedAt() { return createdAt; }

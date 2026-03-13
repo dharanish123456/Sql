@@ -19,6 +19,8 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
+    const role = String(user?.role || "").toUpperCase();
+    if (role === "CUSTOMER") return;
     let active = true;
 
     const updateBellBadge = (count) => {

@@ -200,6 +200,38 @@
     component: "CountriesPage",
   },
   {
+    path: "stocks",
+    component: "StocksDashboardPage",
+  },
+  {
+    path: "stocks/item",
+    component: "StockItemPage",
+  },
+  {
+    path: "stocks/categories",
+    component: "StockCategoryPage",
+  },
+  {
+    path: "stocks/vendors",
+    component: "VendorMasterPage",
+  },
+  {
+    path: "stocks/vendors/add",
+    component: "AddVendorPage",
+  },
+  {
+    path: "stocks/vendors/edit/:id",
+    component: "EditVendorPage",
+  },
+  {
+    path: "stocks/brands",
+    component: "BrandMasterPage",
+  },
+  {
+    path: "stocks/vendor-types",
+    component: "VendorTypePage",
+  },
+  {
     path: "cronjob",
     component: "CronjobPage",
   },
@@ -574,6 +606,19 @@
   {
     path: "leads-dashboard",
     component: "LeadsDashboardPage",
+  },
+  // stock request workflow pages
+  {
+    path: "stock-requests",
+    component: "StockRequestsPage",
+  },
+  {
+    path: "stock-requests/:id",
+    component: "StockRequestEditPage",
+  },
+  {
+    path: "stock-requests/:id/chat",
+    component: "StockRequestChatPage",
   },
   {
     path: "lead-chats",

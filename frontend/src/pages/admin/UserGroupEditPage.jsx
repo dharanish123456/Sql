@@ -19,7 +19,6 @@ import {
 } from "../../api/orgHierarchyApi";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
 import { useAuth } from "../../context/AuthContext";
-import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 
 const EMPTY_SCOPE = {
   institutionId: "",
@@ -660,27 +659,6 @@ export default function UserGroupEditPage() {
             </div>
           </div>
 
-          <hr className="my-4" />
-
-          <div className="mb-3">
-            <label className="form-label">CRM Page Visibility</label>
-            <div className="d-flex flex-wrap gap-3">
-              {CRM_PAGE_OPTIONS.map((page) => (
-                <label key={page.key} className="d-flex align-items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={groupPageKeys.includes(page.key)}
-                    onChange={() => toggleGroupPageKey(page.key)}
-                  />
-                  <span>{page.label}</span>
-                </label>
-              ))}
-            </div>
-            <small className="text-muted d-block mt-1">
-              Members can only be granted pages enabled for this group.
-            </small>
-          </div>
-
           <div className="mb-3">
             <label className="form-label">Add Users</label>
             <div className="d-flex gap-2">
@@ -710,58 +688,18 @@ export default function UserGroupEditPage() {
                 <tr>
                   <th>Username</th>
                   <th>Role</th>
-                  <th>CRM Pages</th>
                   <th className="text-end">Remove</th>
                 </tr>
               </thead>
               <tbody>
                 {members.length === 0 ? (
-                  <tr><td colSpan={4}>No members</td></tr>
+                  <tr><td colSpan={3}>No members</td></tr>
                 ) : (
                   members.map((member) => {
-                    const overridePages = memberPageOverrides[member.userId];
-                    const effectivePages =
-                      overridePages ??
-                      (Array.isArray(member.pageKeys) && member.pageKeys.length
-                        ? member.pageKeys
-                        : groupPageKeys);
-                    const availablePages = groupPageKeys;
                     return (
                       <tr key={member.userId}>
                         <td>{member.username || "-"}</td>
                         <td>{member.role || "-"}</td>
-                        <td>
-                          {availablePages.length === 0 ? (
-                            <span className="text-muted">No pages enabled</span>
-                          ) : (
-                            <div className="d-flex flex-wrap gap-2">
-                              {CRM_PAGE_OPTIONS.filter((page) =>
-                                availablePages.includes(page.key),
-                              ).map((page) => (
-                                <label
-                                  key={page.key}
-                                  className="d-flex align-items-center gap-1"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={effectivePages.includes(page.key)}
-                                    onChange={(e) => {
-                                      const base = Array.isArray(effectivePages)
-                                        ? effectivePages
-                                        : [];
-                                      const next = e.target.checked
-                                        ? [...base, page.key]
-                                        : base.filter((key) => key !== page.key);
-                                      updateMemberPages(member, Array.from(new Set(next)));
-                                    }}
-                                    disabled={memberSavingId === member.userId}
-                                  />
-                                  <span className="fs-12">{page.label}</span>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </td>
                         <td className="text-end">
                           <button
                             className="btn btn-sm btn-outline-danger"

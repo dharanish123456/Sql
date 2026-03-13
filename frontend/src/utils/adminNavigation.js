@@ -165,11 +165,40 @@ export function attachAdminNavigationHandlers(container, navigate, options = {})
       return;
     }
 
-    candidateLinks.forEach((link) => {
-      link.classList.add("active");
-    });
-
     const activeAncestors = new Set();
+
+    // Find which top-level submenu each candidate belongs to, and only
+    // expand the first one so duplicate routes (e.g. /admin-dashboard in
+    // both Dashboard and Super Admin) don't open multiple trees.
+    let firstTopSubmenu = null;
+    candidateLinks.forEach((link) => {
+      // Determine the top-level li.submenu ancestor for this link
+      let topSubmenu = null;
+      let parent = link.parentElement;
+      while (parent && parent !== container) {
+        if (parent.matches && parent.matches("li.submenu")) {
+          topSubmenu = parent;
+        }
+        parent = parent.parentElement;
+      }
+
+      if (firstTopSubmenu === null) {
+        firstTopSubmenu = topSubmenu;
+      } else if (topSubmenu !== firstTopSubmenu) {
+        // This candidate belongs to a different top-level submenu; skip it
+        return;
+      }
+
+      link.classList.add("active");
+      // collect ancestor submenu items so they stay opened
+      parent = link.parentElement;
+      while (parent) {
+        if (parent.matches && parent.matches("li.submenu")) {
+          activeAncestors.add(parent);
+        }
+        parent = parent.parentElement;
+      }
+    });
 
     container.querySelectorAll("li.submenu").forEach((submenuItem) => {
       if (!(submenuItem instanceof HTMLElement)) {

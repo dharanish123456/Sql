@@ -137,23 +137,16 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
-        <Route path="/customer" element={<CustomerLayout />}>
-          <Route
-            path="chat"
-            element={
-              <ProtectedRoute role="customer">
-                <CustomerChatPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="status"
-            element={
-              <ProtectedRoute role="customer">
-                <CustomerStatusPage />
-              </ProtectedRoute>
-            }
-          />
+        <Route
+          path="/customer"
+          element={
+            <ProtectedRoute role="customer">
+              <CustomerLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="chat" element={<CustomerChatPage />} />
+          <Route path="status" element={<CustomerStatusPage />} />
         </Route>
         <Route path="/" element={<AdminLayout />}>
           <Route index element={<Navigate to="/login" replace />} />

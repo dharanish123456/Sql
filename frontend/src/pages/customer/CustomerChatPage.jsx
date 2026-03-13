@@ -5,7 +5,67 @@ import {
   sendCustomerChatMessage,
   downloadCustomerChatAttachment,
 } from "../../api/customerChatApi";
-import { getCustomerLead, updateCustomerLeadStatus } from "../../api/customerApi";
+import { getCustomerLead, updateCustomerLeadStatus, recordCustomerPayment } from "../../api/customerApi";
+
+const CUSTOMER_REJECT_REASONS = [
+  "Budget Too High",
+  "Not Interested",
+  "Already Purchased",
+  "Chose Competitor",
+  "Decision Postponed",
+  "Need More Time",
+];
+
+const PAYMENT_THREAD_MARKER = "[[payment-thread]]";
+const DESIGN_THREAD_MARKER = "[[design-thread]]";
+
+function hasPaymentThreadMarker(value) {
+  return String(value || "").trimStart().startsWith(PAYMENT_THREAD_MARKER);
+}
+
+function hasDesignThreadMarker(value) {
+  return String(value || "").trimStart().startsWith(DESIGN_THREAD_MARKER);
+}
+
+function stripPaymentThreadMarker(value) {
+  const raw = String(value || "");
+  if (!hasPaymentThreadMarker(raw)) return raw;
+  const startTrimmed = raw.trimStart();
+  const withoutMarker = startTrimmed.slice(PAYMENT_THREAD_MARKER.length);
+  return withoutMarker.replace(/^\s+/, "");
+}
+
+function stripDesignThreadMarker(value) {
+  const raw = String(value || "");
+  if (!hasDesignThreadMarker(raw)) return raw;
+  const startTrimmed = raw.trimStart();
+  const withoutMarker = startTrimmed.slice(DESIGN_THREAD_MARKER.length);
+  return withoutMarker.replace(/^\s+/, "");
+}
+
+function applyCustomerThreadFilter(rows, tab) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list
+    .map((item) => {
+      const isPayment = hasPaymentThreadMarker(item?.message);
+      const isDesign = hasDesignThreadMarker(item?.message);
+      let text = stripPaymentThreadMarker(item?.message || "");
+      if (!isPayment) {
+        text = stripDesignThreadMarker(item?.message || "");
+      }
+      return {
+        ...item,
+        _paymentThreadMessage: isPayment,
+        _designThreadMessage: isDesign,
+        message: text,
+      };
+    })
+    .filter((item) => {
+      if (tab === "PAYMENT") return item._paymentThreadMessage;
+      if (tab === "DESIGN") return item._designThreadMessage;
+      return !item._paymentThreadMessage && !item._designThreadMessage;
+    });
+}
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -68,18 +128,70 @@ function parseChoiceMessage(value) {
   return { choices, text };
 }
 
+function buildResolvedChoiceIds(messages) {
+  const rows = Array.isArray(messages) ? messages : [];
+  const resolved = new Set();
+  for (let index = 0; index < rows.length; index += 1) {
+    const current = rows[index];
+    const parsedChoice = parseChoiceMessage(parseReplyMessage(current?.message || "").text);
+    if (!parsedChoice.choices?.length) {
+      continue;
+    }
+    for (let nextIndex = index + 1; nextIndex < rows.length; nextIndex += 1) {
+      const next = rows[nextIndex];
+      const nextMessage = String(next?.message || "").trim().toLowerCase();
+      const isTerminalSelection =
+        next?.senderRole === "CUSTOMER" &&
+        (nextMessage.startsWith("customer selected: accept") ||
+          nextMessage.startsWith("customer selected: reject"));
+      if (isTerminalSelection) {
+        if (current?.id != null) {
+          resolved.add(current.id);
+        }
+        break;
+      }
+    }
+  }
+  return resolved;
+}
+
 export default function CustomerChatPage() {
-  const [messages, setMessages] = useState([]);
+  const [allMessages, setAllMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [leadName, setLeadName] = useState("Support");
+  const [leadId, setLeadId] = useState(null);
+  const [leadStatus, setLeadStatus] = useState("");
+  const [chatTab, setChatTab] = useState("SUPPORT"); // SUPPORT = normal staff thread
   const [replyTo, setReplyTo] = useState(null);
   const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, message: null });
   const [notice, setNotice] = useState("");
   const [respondedChoices, setRespondedChoices] = useState(() => new Set());
+  const [rejectPrompt, setRejectPrompt] = useState({ open: false, messageId: null, choice: "" });
+  const [partialPrompt, setPartialPrompt] = useState({ open: false, messageId: null });
+  const [partialAmount, setPartialAmount] = useState("");
+  const [rejectedReason, setRejectedReason] = useState("");
+  const [rejectedReasonDetail, setRejectedReasonDetail] = useState("");
+  // design-specific prompts
+  const [showAcceptPrompt, setShowAcceptPrompt] = useState(false);
+  const [acceptMessageId, setAcceptMessageId] = useState(null);
+  const [acceptFile, setAcceptFile] = useState(null);
+  const [acceptFileName, setAcceptFileName] = useState("");
+  const [showChangePrompt, setShowChangePrompt] = useState(false);
+  const [changeMessageId, setChangeMessageId] = useState(null);
+  const [changeNote, setChangeNote] = useState("");
   const lastSeenRef = useRef(null);
   const didInitRef = useRef(false);
+
+  const messages = applyCustomerThreadFilter(allMessages, chatTab);
+
+  const isPaymentStatus = String(leadStatus || "").trim().toLowerCase() === "payment";
+  const isDesignStatus = String(leadStatus || "").trim().toLowerCase() === "design";
+  const hasPaymentThread = allMessages.some((item) => hasPaymentThreadMarker(item?.message));
+  const hasDesignThread = allMessages.some((item) => hasDesignThreadMarker(item?.message));
+  const showPaymentTab = isPaymentStatus || hasPaymentThread;
+  const showDesignTab = isDesignStatus || hasDesignThread || chatTab === "DESIGN";
 
   useEffect(() => {
     let active = true;
@@ -88,8 +200,13 @@ export default function CustomerChatPage() {
         const lead = await getCustomerLead();
         if (!active) return;
         setLeadName(lead?.name || lead?.projectName || "Support");
+        setLeadId(lead?.id);
+        setLeadStatus(lead?.status || "");
       } catch {
-        if (active) setLeadName("Support");
+        if (active) {
+          setLeadName("Support");
+          setLeadStatus("");
+        }
       }
     };
     loadLead();
@@ -106,7 +223,7 @@ export default function CustomerChatPage() {
         const rows = await getCustomerChatMessages();
         if (!active) return;
         const list = Array.isArray(rows) ? rows : [];
-        setMessages(list);
+        setAllMessages(list);
         const latest = list[list.length - 1];
         const latestId = latest?.id || latest?.createdAt || null;
         if (latestId && didInitRef.current) {
@@ -122,8 +239,15 @@ export default function CustomerChatPage() {
         if (!didInitRef.current) {
           didInitRef.current = true;
         }
-      } catch {
-        if (active) setMessages([]);
+      } catch (error) {
+        if (!active) return;
+        if (error?.response?.status === 401) {
+          console.error("[CustomerChatPage] Auth failed (401) - session may have expired");
+          setNotice("Your session has expired, please log in again.");
+        } else {
+          console.debug("Failed to load messages:", error?.message);
+        }
+        if (active) setAllMessages([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -140,7 +264,9 @@ export default function CustomerChatPage() {
     const trimmed = text.trim();
     if (!trimmed && !file) return;
     const replyPrefix = buildReplyPrefix(replyTo);
-    const finalMessage = `${replyPrefix}${trimmed}`.trim();
+    const paymentPrefix = chatTab === "PAYMENT" ? `${PAYMENT_THREAD_MARKER}\n` : "";
+    const designPrefix = chatTab === "DESIGN" ? `${DESIGN_THREAD_MARKER}\n` : "";
+    const finalMessage = `${paymentPrefix}${designPrefix}${replyPrefix}${trimmed}`.trim();
     if (file) {
       await sendCustomerChatAttachment({ message: finalMessage, file });
     } else {
@@ -150,25 +276,251 @@ export default function CustomerChatPage() {
     setFile(null);
     setReplyTo(null);
     const rows = await getCustomerChatMessages();
-    setMessages(Array.isArray(rows) ? rows : []);
+    setAllMessages(Array.isArray(rows) ? rows : []);
   };
 
   const respondToChoice = async (messageId, choice) => {
     if (!choice || respondedChoices.has(messageId)) return;
     const normalized = String(choice).trim().toLowerCase();
     const label = normalized.charAt(0).toUpperCase() + normalized.slice(1);
-    setRespondedChoices((prev) => new Set(prev).add(messageId));
-    if (normalized === "accept") {
-      await updateCustomerLeadStatus("Payment");
-      await sendCustomerChatMessage(`Customer selected: ${label}`);
-      return;
+    if (chatTab === "DESIGN") {
+      if (normalized === "accept") {
+        setShowAcceptPrompt(true);
+        setAcceptMessageId(messageId);
+        return;
+      }
+      if (normalized === "reject") {
+        setRejectPrompt({ open: true, messageId, choice: normalized });
+        return;
+      }
+      if (normalized === "change") {
+        setShowChangePrompt(true);
+        setChangeMessageId(messageId);
+        return;
+      }
+      if (normalized === "continue") {
+        try {
+          await sendCustomerChatMessage(`${DESIGN_THREAD_MARKER}\nCustomer selected: Continue`);
+          setNotice("Your response was recorded.");
+          setTimeout(() => setNotice(""), 3000);
+        } catch (error) {
+          console.error("Error sending customer choice:", error);
+          const apiMessage =
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            error?.message ||
+            "Unknown error";
+          setNotice(`Failed to send selection: ${apiMessage}`);
+          setTimeout(() => setNotice(""), 4000);
+        }
+        return;
+      }
     }
+    // existing payment/other logic follows
     if (normalized === "reject") {
-      await updateCustomerLeadStatus("Rejected");
-      await sendCustomerChatMessage(`Customer selected: ${label}`);
+      setRejectPrompt({ open: true, messageId, choice: normalized });
       return;
     }
-    await sendCustomerChatMessage(`Customer selected: ${label}`);
+    if (normalized === "pay full amount") {
+      setRespondedChoices((prev) => new Set(prev).add(messageId));
+      try {
+        await recordCustomerPayment({ type: "full" });
+        const prefix = chatTab === "PAYMENT" ? `${PAYMENT_THREAD_MARKER}\n` : "";
+        await sendCustomerChatMessage(`${prefix}Customer selected: Pay Full Amount`);
+        setNotice("Payment recorded. Thank you!");
+        setTimeout(() => setNotice(""), 3000);
+        const rows = await getCustomerChatMessages();
+        setAllMessages(Array.isArray(rows) ? rows : []);
+      } catch (error) {
+        console.error("Error sending payment choice:", error);
+        setRespondedChoices((prev) => { const c = new Set(prev); c.delete(messageId); return c; });
+      }
+      return;
+    }
+    if (normalized === "pay partial amount") {
+      setPartialPrompt({ open: true, messageId });
+      return;
+    }
+    if (normalized === "continue") {
+      try {
+        await sendCustomerChatMessage(`Customer selected: ${label}`);
+        setNotice("Your response was recorded.");
+        setTimeout(() => setNotice(""), 3000);
+      } catch (error) {
+        console.error("Error sending customer choice:", error);
+        const apiMessage =
+          error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Unknown error";
+        setNotice(`Failed to send selection: ${apiMessage}`);
+        setTimeout(() => setNotice(""), 4000);
+      }
+      return;
+    }
+    setRespondedChoices((prev) => new Set(prev).add(messageId));
+    
+    try {
+      if (normalized === "accept") {
+        await updateCustomerLeadStatus("Payment", leadId);
+        await sendCustomerChatMessage(`Customer selected: ${label}`);
+        setNotice("Your response was recorded. The support flow has moved to payment.");
+        setTimeout(() => setNotice(""), 4000);
+        return;
+      }
+      await sendCustomerChatMessage(`Customer selected: ${label}`);
+    } catch (error) {
+      console.error("Error updating customer lead status:", error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Unknown error";
+      setNotice(`Failed to update selection: ${apiMessage}`);
+      setTimeout(() => setNotice(""), 4000);
+      setRespondedChoices((prev) => {
+        const copy = new Set(prev);
+        copy.delete(messageId);
+        return copy;
+      });
+    }
+  };
+
+  const closePartialPrompt = () => {
+    setPartialPrompt({ open: false, messageId: null });
+    setPartialAmount("");
+  };
+
+  const submitPartialPayment = async () => {
+    const messageId = partialPrompt.messageId;
+    if (!messageId || respondedChoices.has(messageId)) return;
+    if (!partialAmount || Number(partialAmount) <= 0) {
+      setNotice("Please enter the amount you want to pay.");
+      setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+    setRespondedChoices((prev) => new Set(prev).add(messageId));
+    try {
+      const formatted = Number(partialAmount).toLocaleString("en-IN");
+      await recordCustomerPayment({ amount: Number(partialAmount), type: "partial" });
+      const prefix = chatTab === "PAYMENT" ? `${PAYMENT_THREAD_MARKER}\n` : "";
+      await sendCustomerChatMessage(`${prefix}Customer selected: Pay Partial Amount (\u20b9${formatted})`);
+      setNotice("Your response was recorded.");
+      setTimeout(() => setNotice(""), 3000);
+      closePartialPrompt();
+      const rows = await getCustomerChatMessages();
+      const list = applyCustomerThreadFilter(rows, chatTab);
+      setAllMessages(list);
+    } catch (error) {
+      console.error("Error sending partial payment:", error);
+      setRespondedChoices((prev) => { const c = new Set(prev); c.delete(messageId); return c; });
+    }
+  };
+
+  const closeRejectPrompt = () => {
+    setRejectPrompt({ open: false, messageId: null, choice: "" });
+    setRejectedReason("");
+    setRejectedReasonDetail("");
+  };
+
+  const closeAcceptPrompt = () => {
+    setShowAcceptPrompt(false);
+    setAcceptMessageId(null);
+    setAcceptFile(null);
+    setAcceptFileName("");
+  };
+
+  const closeChangePrompt = () => {
+    setShowChangePrompt(false);
+    setChangeMessageId(null);
+    setChangeNote("");
+  };
+
+  const submitRejectChoice = async () => {
+    const messageId = rejectPrompt.messageId;
+    if (!messageId || respondedChoices.has(messageId)) return;
+    if (!rejectedReason) {
+      setNotice("Please select a rejection reason.");
+      setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+    setRespondedChoices((prev) => new Set(prev).add(messageId));
+    try {
+      // update lead only when not design
+      if (chatTab !== "DESIGN") {
+        await updateCustomerLeadStatus("Rejected", leadId, {
+          rejectedReason,
+          rejectedReasonSubtype: rejectedReasonDetail || null,
+        });
+      }
+      const prefix = chatTab === "DESIGN" ? `${DESIGN_THREAD_MARKER}\n` : "";
+      await sendCustomerChatMessage(
+        `${prefix}Customer selected: Reject${rejectedReason ? ` (${rejectedReason})` : ""}`,
+      );
+      setNotice("Your response was recorded.");
+      setTimeout(() => setNotice(""), 4000);
+      closeRejectPrompt();
+    } catch (error) {
+      console.error("Error updating customer lead status:", error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Unknown error";
+      setNotice(`Failed to update selection: ${apiMessage}`);
+      setTimeout(() => setNotice(""), 4000);
+      setRespondedChoices((prev) => {
+        const copy = new Set(prev);
+        copy.delete(messageId);
+        return copy;
+      });
+    }
+  };
+
+  const submitAcceptChoice = async () => {
+    if (!acceptMessageId || respondedChoices.has(acceptMessageId)) return;
+    if (!acceptFile) {
+      setNotice("Please choose a file before submitting.");
+      setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+    setRespondedChoices((prev) => new Set(prev).add(acceptMessageId));
+    try {
+      const prefix = `${DESIGN_THREAD_MARKER}\n`;
+      await sendCustomerChatAttachment({ message: `${prefix}Customer selected: Accept`, file: acceptFile });
+      setNotice("Your response was recorded.");
+      setTimeout(() => setNotice(""), 3000);
+      closeAcceptPrompt();
+      const rows = await getCustomerChatMessages();
+      const list = applyCustomerThreadFilter(rows, chatTab);
+      setAllMessages(list);
+    } catch (error) {
+      console.error("Error sending accept choice:", error);
+      setRespondedChoices((prev) => { const c = new Set(prev); c.delete(acceptMessageId); return c; });
+    }
+  };
+
+  const submitChangeChoice = async () => {
+    if (!changeMessageId || respondedChoices.has(changeMessageId)) return;
+    if (!changeNote) {
+      setNotice("Please describe the changes.");
+      setTimeout(() => setNotice(""), 3000);
+      return;
+    }
+    setRespondedChoices((prev) => new Set(prev).add(changeMessageId));
+    try {
+      const prefix = `${DESIGN_THREAD_MARKER}\n`;
+      await sendCustomerChatMessage(`${prefix}Customer requested change: ${changeNote}`);
+      setNotice("Your response was recorded.");
+      setTimeout(() => setNotice(""), 3000);
+      closeChangePrompt();
+      const rows = await getCustomerChatMessages();
+      const list = applyCustomerThreadFilter(rows, chatTab);
+      setAllMessages(list);
+    } catch (error) {
+      console.error("Error sending change choice:", error);
+      setRespondedChoices((prev) => { const c = new Set(prev); c.delete(changeMessageId); return c; });
+    }
   };
 
   const downloadAttachment = async (item) => {
@@ -201,8 +553,8 @@ export default function CustomerChatPage() {
     closeMenu();
   };
 
-  const supportTitle = "SVL Support";
-  const supportSubtitle = leadName ? `Project: ${leadName}` : "Customer Care";
+  const resolvedChoiceIds = buildResolvedChoiceIds(messages);
+
 
   return (
     <div className="customer-chat" onClick={closeMenu}>
@@ -218,33 +570,92 @@ export default function CustomerChatPage() {
               <i className="ti ti-search" />
             </button>
           </div>
-          <div className="customer-chat__search">
-            <i className="ti ti-search" />
-            <input type="text" placeholder="Search chats" disabled />
-          </div>
-          <div className="customer-chat__contact">
+          <div
+            className={`customer-chat__contact${chatTab === "SUPPORT" ? " customer-chat__contact--active" : ""}`}
+            style={{ cursor: "pointer" }}
+            onClick={() => setChatTab("SUPPORT")}
+          >
             <div className="customer-chat__avatar">
               <img src="/assets/img/profiles/avatar-02.jpg" alt="Support" />
               <span className="customer-chat__status-dot" />
             </div>
             <div className="customer-chat__contact-info">
-              <h6>{supportTitle}</h6>
-              <span>{supportSubtitle}</span>
+              <h6>SVL Support</h6>
+              <span>{leadName ? `Project: ${leadName}` : "Customer Care"}</span>
             </div>
             <div className="customer-chat__contact-state">Online</div>
           </div>
+          {showPaymentTab ? (
+            <div
+              className={`customer-chat__contact${chatTab === "PAYMENT" ? " customer-chat__contact--active" : ""}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => setChatTab("PAYMENT")}
+            >
+              <div className="customer-chat__avatar">
+                <img src="/assets/img/profiles/avatar-06.jpg" alt="Payment" />
+                <span className="customer-chat__status-dot" />
+              </div>
+              <div className="customer-chat__contact-info">
+                <h6>Payment</h6>
+                <span>Payment Discussion</span>
+              </div>
+              <div className="customer-chat__contact-state">Online</div>
+            </div>
+          ) : null}
+          {showDesignTab ? (
+            <div
+              className={`customer-chat__contact${chatTab === "DESIGN" ? " customer-chat__contact--active" : ""}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => setChatTab("DESIGN")}
+            >
+              <div className="customer-chat__avatar">
+                <img src="/assets/img/profiles/avatar-10.jpg" alt="Design" />
+                <span className="customer-chat__status-dot" />
+              </div>
+              <div className="customer-chat__contact-info">
+                <h6>Design</h6>
+                <span>Design Team</span>
+              </div>
+              <div className="customer-chat__contact-state">Online</div>
+            </div>
+          ) : null}
         </aside>
 
         <section className="customer-chat__panel">
           <div className="customer-chat__panel-header">
             <div className="customer-chat__panel-title">
               <div className="customer-chat__avatar customer-chat__avatar--lg">
-                <img src="/assets/img/profiles/avatar-02.jpg" alt="Support" />
+                <img
+                src={
+                  chatTab === "PAYMENT"
+                    ? "/assets/img/profiles/avatar-06.jpg"
+                    : chatTab === "DESIGN"
+                    ? "/assets/img/profiles/avatar-10.jpg"
+                    : "/assets/img/profiles/avatar-02.jpg"
+                }
+                alt={
+                  chatTab === "PAYMENT"
+                    ? "Payment"
+                    : chatTab === "DESIGN"
+                    ? "Design"
+                    : "Support"
+                }
+              />
                 <span className="customer-chat__status-dot" />
               </div>
               <div>
-                <h5>{supportTitle}</h5>
-                <p>{supportSubtitle}</p>
+                <h5>
+                  {chatTab === "PAYMENT" ? "Payment" : chatTab === "DESIGN" ? "Design" : "SVL Support"}
+                </h5>
+                <p>
+                  {chatTab === "PAYMENT"
+                    ? "Payment Discussion"
+                    : chatTab === "DESIGN"
+                    ? "Design Discussion"
+                    : leadName
+                    ? `Project: ${leadName}`
+                    : "Customer Care"}
+                </p>
               </div>
             </div>
             <div className="customer-chat__panel-actions">
@@ -294,7 +705,11 @@ export default function CustomerChatPage() {
                                 type="button"
                                 className="btn btn-sm btn-outline-primary"
                                 onClick={() => respondToChoice(item.id, choice)}
-                                disabled={respondedChoices.has(item.id)}
+                                disabled={
+                                  respondedChoices.has(item.id) ||
+                                  resolvedChoiceIds.has(item.id)
+                                }
+                                title=""
                               >
                                 {choice}
                               </button>
@@ -369,6 +784,190 @@ export default function CustomerChatPage() {
               Download
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {showAcceptPrompt ? (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{ zIndex: 1050 }}
+          onClick={closeAcceptPrompt}
+        >
+          <div
+            className="card shadow-lg"
+            style={{ width: "100%", maxWidth: "520px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header d-flex align-items-center justify-content-between">
+              <h5 className="mb-0">Upload Design File</h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={closeAcceptPrompt}
+              />
+            </div>
+            <div className="card-body">
+              <div className="mb-3">
+                <label className="form-label">Choose file</label>
+                <input
+                  className="form-control"
+                  type="file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setAcceptFile(f);
+                    setAcceptFileName(f?.name || "");
+                  }}
+                />
+                {acceptFileName && <div className="text-muted mt-1">{acceptFileName}</div>}
+              </div>
+              <div className="d-flex justify-content-end">
+                <button className="btn btn-primary" onClick={submitAcceptChoice}>
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {showChangePrompt ? (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{ zIndex: 1050 }}
+          onClick={closeChangePrompt}
+        >
+          <div
+            className="card shadow-lg"
+            style={{ width: "100%", maxWidth: "520px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header d-flex align-items-center justify-content-between">
+              <h5 className="mb-0">Describe Changes</h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={closeChangePrompt}
+              />
+            </div>
+            <div className="card-body">
+              <div className="mb-3">
+                <label className="form-label">What needs to change?</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={changeNote}
+                  onChange={(e) => setChangeNote(e.target.value)}
+                />
+              </div>
+              <div className="d-flex justify-content-end">
+                <button className="btn btn-primary" onClick={submitChangeChoice}>
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {rejectPrompt.open ? (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{ zIndex: 1050 }}
+          onClick={closeRejectPrompt}
+        >
+          <div
+            className="card shadow-lg"
+            style={{ width: "100%", maxWidth: "520px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header d-flex align-items-center justify-content-between">
+              <h5 className="mb-0">Select Rejection Reason</h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={closeRejectPrompt}
+              />
+            </div>
+            <div className="card-body">
+              <div className="mb-3">
+                <label className="form-label">Rejected Reason</label>
+                <select
+                  className="form-select"
+                  value={rejectedReason}
+                  onChange={(e) => setRejectedReason(e.target.value)}
+                >
+                  <option value="">Select reason</option>
+                  {CUSTOMER_REJECT_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {reason}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Details</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={rejectedReasonDetail}
+                  onChange={(e) => setRejectedReasonDetail(e.target.value)}
+                  placeholder="Optional details"
+                />
+              </div>
+              <div className="d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-light" onClick={closeRejectPrompt}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-danger" onClick={submitRejectChoice}>
+                  Submit Rejection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {partialPrompt.open ? (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50"
+          style={{ zIndex: 1050 }}
+          onClick={closePartialPrompt}
+        >
+          <div
+            className="card shadow-lg"
+            style={{ width: "100%", maxWidth: "420px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header d-flex align-items-center justify-content-between">
+              <h5 className="mb-0">Enter Partial Payment Amount</h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={closePartialPrompt}
+              />
+            </div>
+            <div className="card-body">
+              <div className="mb-3">
+                <label className="form-label">Amount (₹)</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  placeholder="Enter amount"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  min="0"
+                />
+              </div>
+              <div className="d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-light" onClick={closePartialPrompt}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary" onClick={submitPartialPayment}>
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

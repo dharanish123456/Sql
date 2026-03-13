@@ -5,15 +5,8 @@ import { extractApiErrorMessage } from "../../utils/errorMessage";
 import { getAssignableLeadGroups } from "../../api/leadsApi";
 import { getLeadFlow, updateLeadFlow } from "../../api/flowApi";
 import { useAuth } from "../../context/AuthContext";
-
-const DEFAULT_STATUSES = [
-  "New Lead",
-  "Attempted",
-  "Interested",
-  "Boq",
-  "Payment",
-  "Allocate",
-];
+import { LEAD_FLOW_STATUSES } from "../../constants/leadFlowStatuses";
+import { useToast } from "../../components/system/ToastProvider";
 
 const emptyRule = (status) => ({
   status,
@@ -25,18 +18,56 @@ export default function FlowPage() {
   const { user } = useAuth();
   const role = String(user?.role || "").toUpperCase();
   const canEdit = role === "SUPER_ADMIN";
+  const { showSuccess, showError } = useToast();
 
   const [groups, setGroups] = useState([]);
-  const [rules, setRules] = useState(DEFAULT_STATUSES.map(emptyRule));
+  const [rules, setRules] = useState(LEAD_FLOW_STATUSES.map(emptyRule));
+  const [defaultGroupId, setDefaultGroupId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [statusPickerRule, setStatusPickerRule] = useState(null);
+  const [groupPickerRule, setGroupPickerRule] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [newStatusName, setNewStatusName] = useState("");
+  const [editingStatus, setEditingStatus] = useState(null);
+  const [editingGroupId, setEditingGroupId] = useState("");
+  const [editingStatusName, setEditingStatusName] = useState("");
 
   const groupOptions = useMemo(
     () => groups.filter((g) => g?.id != null),
     [groups],
   );
+  const allStatusOptions = useMemo(() => {
+    const names = [
+      ...LEAD_FLOW_STATUSES,
+      "Rejected",
+      ...rules.map((rule) => String(rule?.status || "").trim()),
+      ...rules.flatMap((rule) =>
+        rule?.next && typeof rule.next === "object"
+          ? Object.keys(rule.next).map((item) => String(item || "").trim())
+          : [],
+      ),
+    ].filter(Boolean);
+    return Array.from(new Set(names));
+  }, [rules]);
+
+  const applyDefaultGroupToRules = (ruleList, groupId) => {
+    if (!groupId) return ruleList;
+    return ruleList.map((rule) => ({
+      ...rule,
+      handledByGroupId: rule.handledByGroupId || groupId,
+    }));
+  };
+
+  const handleDefaultGroupChange = (nextGroupId) => {
+    setDefaultGroupId(nextGroupId);
+    if (nextGroupId) {
+      setRules((prev) => applyDefaultGroupToRules(prev, nextGroupId));
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -51,7 +82,21 @@ export default function FlowPage() {
         if (!active) return;
         setGroups(Array.isArray(groupRows) ? groupRows : []);
         const loadedRules = Array.isArray(flow?.rules) ? flow.rules : [];
-        const merged = DEFAULT_STATUSES.map((status) => {
+        const knownStatuses = Array.from(
+          new Set([
+            ...LEAD_FLOW_STATUSES,
+            ...loadedRules.map((rule) => String(rule?.status || "").trim()).filter(Boolean),
+          ]),
+        )
+        // drop the old "Accounts" entry if it survives in stored rules
+        .filter((s) => String(s || "").trim().toLowerCase() !== "accounts");
+        const fallbackGroupId = flow?.defaultGroupId
+          ? String(flow.defaultGroupId)
+          : groupRows && groupRows.length
+            ? String(groupRows[0].id)
+            : "";
+        setDefaultGroupId(fallbackGroupId);
+        const merged = knownStatuses.map((status) => {
           const found = loadedRules.find(
             (rule) =>
               String(rule?.status || "").trim().toLowerCase() ===
@@ -62,7 +107,9 @@ export default function FlowPage() {
             ...found,
             status,
             handledByGroupId:
-              found?.handledByGroupId != null ? String(found.handledByGroupId) : "",
+              found?.handledByGroupId != null
+                ? String(found.handledByGroupId)
+                : fallbackGroupId,
             next: found?.next && typeof found.next === "object" ? found.next : {},
           };
         });
@@ -108,11 +155,86 @@ export default function FlowPage() {
     );
   };
 
+  const selectedNextStatuses = (rule) =>
+    rule?.next && typeof rule.next === "object" ? Object.keys(rule.next) : [];
+
+  const handleAddStatus = () => {
+    const trimmedName = newStatusName.trim();
+    if (!trimmedName) {
+      alert("Status name cannot be empty");
+      return;
+    }
+    if (rules.some((r) => r.status.toLowerCase() === trimmedName.toLowerCase())) {
+      alert("Status already exists");
+      return;
+    }
+    const newRule = {
+      status: trimmedName,
+      handledByGroupId: defaultGroupId || "",
+      next: {},
+    };
+    setRules((prev) => [...prev, newRule]);
+    setNewStatusName("");
+    setShowAddModal(false);
+    showSuccess("Status added", { title: "Flow" });
+  };
+
+  const handleEditStatus = () => {
+    if (!editingStatus) return;
+    const trimmedName = editingStatusName.trim();
+    if (!trimmedName) {
+      alert("Status name cannot be empty");
+      return;
+    }
+    // Check if new name conflicts with existing statuses (excluding current)
+    if (trimmedName.toLowerCase() !== editingStatus.toLowerCase() &&
+        rules.some((r) => r.status.toLowerCase() === trimmedName.toLowerCase())) {
+      alert("Status name already exists");
+      return;
+    }
+    setRules((prev) =>
+      prev.map((rule) =>
+        rule.status === editingStatus
+          ? { 
+              ...rule, 
+              status: trimmedName
+            }
+          : rule,
+      ),
+    );
+    setEditingStatus(null);
+    setEditingGroupId("");
+    setEditingStatusName("");
+    setShowEditModal(false);
+    showSuccess("Status updated", { title: "Flow" });
+  };
+
+  const handleDeleteStatus = () => {
+    if (!editingStatus) return;
+    setRules((prev) => prev.filter((rule) => rule.status !== editingStatus));
+    setEditingStatus(null);
+    setEditingStatusName("");
+    setEditingGroupId("");
+    setShowDeleteModal(false);
+    showSuccess("Status deleted", { title: "Flow" });
+  };
+
+  const openEditModal = (status) => {
+    const rule = rules.find((r) => r.status === status);
+    if (rule) {
+      setEditingStatus(status);
+      setEditingStatusName(status);
+      setEditingGroupId(rule.handledByGroupId || "");
+      setShowEditModal(true);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
     try {
       const payload = {
+        defaultGroupId: defaultGroupId ? Number(defaultGroupId) : null,
         rules: rules.map((rule) => ({
           status: rule.status,
           handledByGroupId: rule.handledByGroupId
@@ -122,10 +244,11 @@ export default function FlowPage() {
         })),
       };
       await updateLeadFlow(payload);
-      setNotice("Flow saved");
-      setTimeout(() => setNotice(""), 2500);
+      showSuccess("Flow saved", { title: "Flow" });
     } catch (e) {
-      setError(extractApiErrorMessage(e, "Failed to save flow"));
+      const message = extractApiErrorMessage(e, "Failed to save flow");
+      setError(message);
+      showError(message, { title: "Flow" });
     } finally {
       setSaving(false);
     }
@@ -144,11 +267,63 @@ export default function FlowPage() {
         ]}
       />
 
-      {notice && <div className="alert alert-success">{notice}</div>}
-      {error && <div className="alert alert-danger">{error}</div>}
+      {/* notifications handled via toast */}
 
       <div className="card">
         <div className="card-body">
+          {canEdit && (
+            <div className="row mb-4">
+              <div className="col-12 d-flex justify-content-end">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => setShowAddModal(true)}
+                  title="Add new status"
+                >
+                  Add Status
+                </button>
+              </div>
+            </div>
+          )}
+
+          {canEdit ? (
+            <div className="row mb-3">
+              <div className="col-md-4">
+                <label className="form-label">Default Group</label>
+                <select
+                  className="form-select"
+                  value={defaultGroupId}
+                  onChange={(e) => handleDefaultGroupChange(e.target.value)}
+                >
+                  <option value="">Select Default Group</option>
+                  {groupOptions.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="row mb-3">
+              <div className="col-md-4">
+                <label className="form-label">Default Group</label>
+                <select
+                  className="form-select"
+                  value={defaultGroupId}
+                  onChange={(e) => handleDefaultGroupChange(e.target.value)}
+                  disabled
+                >
+                  <option value="">Select Default Group</option>
+                  {groupOptions.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="table-responsive">
             <table className="table table-bordered align-middle">
               <thead className="table-light">
@@ -157,6 +332,7 @@ export default function FlowPage() {
                   <th>Handled By Group</th>
                   <th>Allowed Next Status</th>
                   <th>Next Group (per status)</th>
+                  {canEdit && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -187,67 +363,291 @@ export default function FlowPage() {
                       </select>
                     </td>
                     <td>
-                      <div className="d-flex flex-wrap gap-2">
-                        {DEFAULT_STATUSES.filter(
-                          (status) => status !== rule.status,
-                        ).map((status) => (
-                          <label
-                            key={`${rule.status}-${status}`}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={rule.next?.[status] !== undefined}
-                              onChange={() =>
-                                toggleNextStatus(rule.status, status)
-                              }
-                              disabled={!canEdit}
-                            />
-                            <span className="fs-12">{status}</span>
-                          </label>
-                        ))}
-                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => setStatusPickerRule(rule.status)}
+                        disabled={!canEdit}
+                      >
+                        {selectedNextStatuses(rule).length
+                          ? `${selectedNextStatuses(rule).length} selected`
+                          : "Select Status"}
+                      </button>
                     </td>
                     <td>
-                      {rule.next && Object.keys(rule.next).length > 0 ? (
-                        <div className="d-flex flex-column gap-2">
-                          {Object.keys(rule.next).map((status) => (
-                            <div
-                              key={`${rule.status}-${status}`}
-                              className="d-flex align-items-center gap-2"
-                            >
-                              <span className="fs-12">{status}</span>
-                              <select
-                                className="form-select"
-                                value={rule.next?.[status] ?? ""}
-                                onChange={(e) =>
-                                  updateNextGroup(
-                                    rule.status,
-                                    status,
-                                    e.target.value,
-                                  )
-                                }
-                                disabled={!canEdit}
-                              >
-                                <option value="">No Group Change</option>
-                                {groupOptions.map((group) => (
-                                  <option key={group.id} value={group.id}>
-                                    {group.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted">No next status</span>
-                      )}
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setGroupPickerRule(rule.status)}
+                        disabled={!canEdit || selectedNextStatuses(rule).length === 0}
+                      >
+                        {selectedNextStatuses(rule).length
+                          ? "Set Next Group"
+                          : "No next status"}
+                      </button>
                     </td>
+                    {canEdit && (
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-outline-info btn-sm me-2"
+                          onClick={() => openEditModal(rule.status)}
+                          title="Edit"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => {
+                            setEditingStatus(rule.status);
+                            setShowDeleteModal(true);
+                          }}
+                          title="Delete"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {statusPickerRule ? (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+              <div className="card shadow-lg" style={{ width: "100%", maxWidth: "720px" }}>
+                <div className="card-header d-flex align-items-center justify-content-between">
+                  <h5 className="mb-0">Allowed Next Status</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => setStatusPickerRule(null)}
+                  />
+                </div>
+                <div className="card-body">
+                  <div className="row g-2">
+                    {allStatusOptions.filter((status) => status !== statusPickerRule).map((status) => {
+                      const rule = rules.find((item) => item.status === statusPickerRule);
+                      const checked = rule?.next?.[status] !== undefined;
+                      return (
+                        <div className="col-md-6" key={`${statusPickerRule}-${status}`}>
+                          <label className="d-flex align-items-center gap-2 border rounded px-3 py-2 bg-white text-dark">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleNextStatus(statusPickerRule, status)}
+                            />
+                            <span className="text-dark fw-medium">{status}</span>
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {groupPickerRule ? (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+              <div className="card shadow-lg" style={{ width: "100%", maxWidth: "720px" }}>
+                <div className="card-header d-flex align-items-center justify-content-between">
+                  <h5 className="mb-0">Next Group</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => setGroupPickerRule(null)}
+                  />
+                </div>
+                <div className="card-body">
+                  <div className="d-flex flex-column gap-3">
+                    {selectedNextStatuses(rules.find((item) => item.status === groupPickerRule)).map((status) => {
+                      const rule = rules.find((item) => item.status === groupPickerRule);
+                      return (
+                        <div key={`${groupPickerRule}-${status}`} className="d-flex align-items-center gap-3">
+                          <div style={{ minWidth: 160 }} className="fw-medium text-dark">{status}</div>
+                          <select
+                            className="form-select"
+                            value={rule?.next?.[status] ?? ""}
+                            onChange={(e) => updateNextGroup(groupPickerRule, status, e.target.value)}
+                          >
+                            <option value="">No Group Change</option>
+                            {groupOptions.map((group) => (
+                              <option key={group.id} value={group.id}>
+                                {group.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    {selectedNextStatuses(rules.find((item) => item.status === groupPickerRule)).length === 0 ? (
+                      <div className="text-muted">No next status selected.</div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ADD MODAL */}
+          {showAddModal && (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+              <div className="card shadow-lg" style={{ width: "100%", maxWidth: "500px" }}>
+                <div className="card-header d-flex align-items-center justify-content-between">
+                  <h5 className="mb-0">Add New Status</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setNewStatusName("");
+                    }}
+                  />
+                </div>
+                <div className="card-body">
+                  <div className="mb-3">
+                    <label className="form-label">Status Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Enter status name"
+                      value={newStatusName}
+                      onChange={(e) => setNewStatusName(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter") handleAddStatus();
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="card-footer d-flex justify-content-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setNewStatusName("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleAddStatus}
+                  >
+                    Add Status
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* EDIT MODAL */}
+          {showEditModal && (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+              <div className="card shadow-lg" style={{ width: "100%", maxWidth: "500px" }}>
+                <div className="card-header d-flex align-items-center justify-content-between">
+                  <h5 className="mb-0">Edit Status</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingStatus(null);
+                      setEditingStatusName("");
+                      setEditingGroupId("");
+                    }}
+                  />
+                </div>
+                <div className="card-body">
+                  <div className="mb-3">
+                    <label className="form-label">Status Name</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={editingStatusName || ""}
+                      onChange={(e) => setEditingStatusName(e.target.value)}
+                      placeholder="Enter status name"
+                    />
+                  </div>
+                </div>
+                <div className="card-footer d-flex justify-content-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingStatus(null);
+                      setEditingStatusName("");
+                      setEditingGroupId("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleEditStatus}
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DELETE MODAL */}
+          {showDeleteModal && (
+            <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+              <div className="card shadow-lg" style={{ width: "100%", maxWidth: "500px" }}>
+                <div className="card-header d-flex align-items-center justify-content-between bg-danger text-white">
+                  <h5 className="mb-0">Delete Status</h5>
+                  <button
+                    type="button"
+                    className="btn-close btn-close-white"
+                    aria-label="Close"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setEditingStatus(null);
+                      setEditingStatusName("");
+                    }}
+                  />
+                </div>
+                <div className="card-body">
+                  <p className="mb-0">
+                    Are you sure you want to delete the status <strong>{editingStatus}</strong>? This action cannot be undone.
+                  </p>
+                </div>
+                <div className="card-footer d-flex justify-content-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setEditingStatus(null);
+                      setEditingStatusName("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleDeleteStatus}
+                  >
+                    Delete Status
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="d-flex justify-content-end">
             <button

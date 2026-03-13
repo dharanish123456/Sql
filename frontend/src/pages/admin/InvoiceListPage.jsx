@@ -266,7 +266,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Anthony
 																	Lewis</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="bcddd2c8d4d3d2c5fcd9c4ddd1ccd0d992dfd3d1">[email&#160;protected]</Link></span>
 														</div>
@@ -288,7 +288,7 @@ const InvoiceListPage = () => {
 																className="ti ti-eye"></i></Link>
 														<Link to="/edit-invoices" className="me-2"><i
 																className="ti ti-edit"></i></Link>
-														<Link href="#delete_modal" className="" data-bs-toggle="modal"
+													<Link to="#delete_modal" className="" data-bs-toggle="modal"
 															data-bs-target="#delete_modal"><i
 																className="ti ti-trash"></i></Link>
 													</div>
@@ -313,7 +313,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Brian
 																	Villalobos</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+															<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="86e4f4efe7e8c6e3fee7ebf6eae3a8e5e9eb">[email&#160;protected]</Link></span>
 														</div>
@@ -360,7 +360,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Harvey
 																	Smith</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="f29a938084978bb2978a939f829e97dc919d9f">[email&#160;protected]</Link></span>
 														</div>
@@ -407,7 +407,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Stephan
 																	Peralt</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="f3839681929fb3968b929e839f96dd909c9e">[email&#160;protected]</Link></span>
 														</div>
@@ -453,7 +453,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Doglas
 																	Martini</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="3954584b4d57504e4b795c41585449555c175a5654">[email&#160;protected]</Link></span>
 														</div>
@@ -500,7 +500,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Linda
 																	Ray</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="493b28307d7c7f092c31282439252c672a2624">[email&#160;protected]</Link></span>
 														</div>
@@ -547,7 +547,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Elliot
 																	Murray</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+												<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="0469717676657d44617c65697468612a676b69">[email&#160;protected]</Link></span>
 														</div>
@@ -594,7 +594,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Rebecca
 																	Smtih</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+												<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="e7948a938e8fa7829f868a978b82c984888a">[email&#160;protected]</Link></span>
 														</div>
@@ -641,7 +641,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Anthony
 																	Lewis</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+												<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="aecfc0dac6c1c0d7eecbd6cfc3dec2cb80cdc1c3">[email&#160;protected]</Link></span>
 														</div>
@@ -688,7 +688,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Connie
 																	Waters</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="86e5e9e8e8efe3c6e3fee7ebf6eae3a8e5e9eb">[email&#160;protected]</Link></span>
 														</div>
@@ -735,7 +735,7 @@ const InvoiceListPage = () => {
 															<h6 className="fw-medium"><Link to="/invoice-details">Lori
 																	Broaddus</Link>
 															</h6>
-															<span className="fs-12"><Link href="cdn-cgi/l/email-protection"
+														<span className="fs-12"><Link to="cdn-cgi/l/email-protection"
 																	className="__cf_email__"
 																	data-cfemail="492b3b26282d2d3c3a092c31282439252c672a2624">[email&#160;protected]</Link></span>
 														</div>
@@ -798,11 +798,4 @@ const InvoiceListPage = () => {
 			</div>
 			{/* /Delete Modal */}
 
-		</div>
-		{/* /Main Wrapper */}
-	</div>
     </>
-  );
-};
-
-export default InvoiceListPage;
