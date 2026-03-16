@@ -55,6 +55,7 @@ public class LeadUpdateDetailsRequest {
     private String paymentNotes;
     private String rejectionNotes;
     private String invoiceData;
+    private String paymentVerifiedInvoiceData;
     private java.math.BigDecimal invoiceCgstPercent;
     private java.math.BigDecimal invoiceSgstPercent;
     private java.math.BigDecimal paymentVerificationAmount;
@@ -63,6 +64,12 @@ public class LeadUpdateDetailsRequest {
     private String budgetVerificationStatus;
     private Long budgetVerificationAssignedToUserId;
     private String budgetVerificationRejectionReason;
+
+    // production requirement - JSON serialized production brief
+    private String productionBrief;
+
+    // design requirement - JSON serialized design brief
+    private String designBrief;
 
     public String getBudgetVerificationStatus() { return budgetVerificationStatus; }
     public void setBudgetVerificationStatus(String s) { this.budgetVerificationStatus = s; }
@@ -393,6 +400,9 @@ public class LeadUpdateDetailsRequest {
         this.invoiceData = invoiceData;
     }
 
+    public String getPaymentVerifiedInvoiceData() { return paymentVerifiedInvoiceData; }
+    public void setPaymentVerifiedInvoiceData(String paymentVerifiedInvoiceData) { this.paymentVerifiedInvoiceData = paymentVerifiedInvoiceData; }
+
     public java.math.BigDecimal getInvoiceCgstPercent() { return invoiceCgstPercent; }
     public void setInvoiceCgstPercent(java.math.BigDecimal invoiceCgstPercent) { this.invoiceCgstPercent = invoiceCgstPercent; }
 
@@ -401,4 +411,10 @@ public class LeadUpdateDetailsRequest {
 
     public java.math.BigDecimal getPaymentVerificationAmount() { return paymentVerificationAmount; }
     public void setPaymentVerificationAmount(java.math.BigDecimal paymentVerificationAmount) { this.paymentVerificationAmount = paymentVerificationAmount; }
+
+    public String getProductionBrief() { return productionBrief; }
+    public void setProductionBrief(String productionBrief) { this.productionBrief = productionBrief; }
+
+    public String getDesignBrief() { return designBrief; }
+    public void setDesignBrief(String designBrief) { this.designBrief = designBrief; }
 }

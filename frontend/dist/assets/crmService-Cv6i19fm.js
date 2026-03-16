@@ -1,0 +1,1 @@
+import{a as e}from"./apiClient-CM3pu47f.js";const r={getCallHistory(){return e.get("/crm/call-history")},getCities(){return e.get("/crm/cities")},getCompanies(){return e.get("/crm/companies")},getDealsGrid(){return e.get("/crm/deals-grid")},getChat(){return e.get("/crm/chat")}};export{r as c};

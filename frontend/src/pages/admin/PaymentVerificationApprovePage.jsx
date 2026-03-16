@@ -439,6 +439,7 @@ export default function PaymentVerificationApprovePage() {
   const verificationAmount = parseFloat(lead.paymentVerificationAmount) || 0;
 
   totals.grandTotal = totals.subtotal + totals.cgst + totals.sgst;
+  totals.verificationAmount = verificationAmount;
   // Remaining = grand total - verification amount being approved
   totals.remainingAmount = totals.grandTotal - verificationAmount;
 

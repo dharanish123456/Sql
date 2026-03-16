@@ -11,6 +11,8 @@ import com.nexorcrm.backend.dto.LeadUpdateAllocatorRequest;
 import com.nexorcrm.backend.dto.LeadUpdateStatusRequest;
 import com.nexorcrm.backend.dto.LeadUpdateDetailsRequest;
 import com.nexorcrm.backend.dto.PaymentRequest;
+import com.nexorcrm.backend.dto.DesignRequirementRequest;
+import com.nexorcrm.backend.dto.ProductionRequirementRequest;
 import com.nexorcrm.backend.entity.ActivationStatus;
 import com.nexorcrm.backend.entity.ChannelPartner;
 import com.nexorcrm.backend.entity.Lead;
@@ -89,6 +91,8 @@ public class LeadService {
     private final ObjectMapper objectMapper;
     private final LeadInvoiceItemRepository leadInvoiceItemRepository;
     private final DealService dealService;
+    private final DesignRequirementService designRequirementService;
+    private final ProductionRequirementService productionRequirementService;
     private static final String DEFAULT_CUSTOMER_PASSWORD = "Customer@123";
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private static final Logger logger = LoggerFactory.getLogger(LeadService.class);
@@ -109,7 +113,9 @@ public class LeadService {
                        LeadChatService leadChatService,
                        ObjectMapper objectMapper,
                        LeadInvoiceItemRepository leadInvoiceItemRepository,
-                       DealService dealService) {
+                       DealService dealService,
+                       DesignRequirementService designRequirementService,
+                       ProductionRequirementService productionRequirementService) {
         this.leadRepository = leadRepository;
         this.leadLogRepository = leadLogRepository;
         this.channelPartnerRepository = channelPartnerRepository;
@@ -124,6 +130,8 @@ public class LeadService {
         this.objectMapper = objectMapper;
         this.leadInvoiceItemRepository = leadInvoiceItemRepository;
         this.dealService = dealService;
+        this.designRequirementService = designRequirementService;
+        this.productionRequirementService = productionRequirementService;
     }
 
     /**
@@ -1011,6 +1019,203 @@ public class LeadService {
             row.setBudgetVerificationAssignedToUserId(request.getBudgetVerificationAssignedToUserId());
         }
 
+        // Handle design requirement - parse designBrief JSON and save to DesignRequirement
+        if (request.getDesignBrief() != null && !request.getDesignBrief().trim().isEmpty()) {
+            try {
+                Map<String, Object> designBriefMap = objectMapper.readValue(
+                        request.getDesignBrief(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+
+                DesignRequirementRequest designReqRequest = new DesignRequirementRequest();
+                designReqRequest.setLeadId(id);
+                designReqRequest.setRequirementType(normalizeNullable(request.getRequirementType()));
+                designReqRequest.setRequirementNotes(normalizeNullable(request.getRequirementNotes()));
+                designReqRequest.setRequirementFileName(normalizeNullable(request.getRequirementFileName()));
+                designReqRequest.setRequirementFilePath(normalizeNullable(request.getRequirementFilePath()));
+
+                Map<String, Object> productDetails = asMap(designBriefMap.get("productDetails"));
+                designReqRequest.setDesignProductType(asString(productDetails.get("type")));
+                designReqRequest.setDesignCustomProductType(asString(productDetails.get("customType")));
+                designReqRequest.setDesignSize(asString(productDetails.get("size")));
+                designReqRequest.setDesignCustomSize(asString(productDetails.get("customSize")));
+                designReqRequest.setDesignOrientation(asString(productDetails.get("orientation")));
+                designReqRequest.setDesignNumPages(asInteger(productDetails.get("pages")));
+
+                Map<String, Object> designDetails = asMap(designBriefMap.get("designBrief"));
+                designReqRequest.setDesignDescription(asString(designDetails.get("description")));
+                designReqRequest.setDesignPurpose(asString(designDetails.get("purpose")));
+                designReqRequest.setDesignCustomPurpose(asString(designDetails.get("customPurpose")));
+                designReqRequest.setDesignTargetAudience(asString(designDetails.get("targetAudience")));
+                designReqRequest.setDesignStylePref(asString(designDetails.get("stylePreference")));
+
+                Map<String, Object> brandDetails = asMap(designBriefMap.get("brandDetails"));
+                designReqRequest.setDesignBrandColors(asString(brandDetails.get("colors")));
+                designReqRequest.setDesignFonts(asString(brandDetails.get("fonts")));
+                Map<String, Object> guidelinesFile = asMap(brandDetails.get("guidelinesFile"));
+                designReqRequest.setDesignBrandGuidelinesFileName(asString(guidelinesFile.get("fileName")));
+                designReqRequest.setDesignBrandGuidelinesFilePath(asString(guidelinesFile.get("filePath")));
+
+                Map<String, Object> content = asMap(designBriefMap.get("contentFromClient"));
+                Map<String, Object> logo = asMap(content.get("logo"));
+                designReqRequest.setDesignLogoFileName(asString(logo.get("fileName")));
+                designReqRequest.setDesignLogoFilePath(asString(logo.get("filePath")));
+                Map<String, Object> images = asMap(content.get("images"));
+                designReqRequest.setDesignImagesFileName(asString(images.get("fileName")));
+                designReqRequest.setDesignImagesFilePath(asString(images.get("filePath")));
+                designReqRequest.setDesignTextContent(asString(content.get("textContent")));
+                designReqRequest.setDesignWebsite(asString(content.get("website")));
+                designReqRequest.setDesignPhone(asString(content.get("phone")));
+                designReqRequest.setDesignPhoneCountryCode(asString(content.get("phoneCountryCode")));
+                designReqRequest.setDesignAddress(asString(content.get("address")));
+                designReqRequest.setDesignSocialMedia(asString(content.get("socialMedia")));
+                designReqRequest.setDesignQrCode(asString(content.get("qrCode")));
+
+                Map<String, Object> refs = asMap(designBriefMap.get("referenceDesigns"));
+                Map<String, Object> refImages = asMap(refs.get("images"));
+                designReqRequest.setDesignReferenceImagesFileName(asString(refImages.get("fileName")));
+                designReqRequest.setDesignReferenceImagesFilePath(asString(refImages.get("filePath")));
+                designReqRequest.setDesignReferenceLinks(asString(refs.get("links")));
+                Map<String, Object> prevDesigns = asMap(refs.get("previousDesigns"));
+                designReqRequest.setDesignPreviousDesignsFileName(asString(prevDesigns.get("fileName")));
+                designReqRequest.setDesignPreviousDesignsFilePath(asString(prevDesigns.get("filePath")));
+
+                Map<String, Object> deadline = asMap(designBriefMap.get("deadline"));
+                designReqRequest.setDesignDeadline(parseDateTimeOrDate(deadline.get("date")));
+                designReqRequest.setDesignPriority(asString(deadline.get("priority")));
+                designReqRequest.setDesignCustomPriority(asString(deadline.get("customPriority")));
+
+                Map<String, Object> special = asMap(designBriefMap.get("specialInstructions"));
+                designReqRequest.setDesignAdditionalNotes(asString(special.get("notes")));
+                designReqRequest.setDesignRestrictions(asString(special.get("restrictions")));
+                designReqRequest.setDesignColorPrefs(asString(special.get("colorPreferences")));
+
+                designRequirementService.saveDesignRequirement(designReqRequest, actor.getId());
+            } catch (Exception e) {
+                logger.error("Failed to parse and save design brief: {}", e.getMessage(), e);
+                // Do not fail lead update if design brief parsing fails.
+            }
+        }
+
+        // Handle production requirement - parse productionBrief JSON and save to ProductionRequirement
+        if (request.getProductionBrief() != null && !request.getProductionBrief().trim().isEmpty()) {
+            try {
+                Map<String, Object> productionBriefMap = objectMapper.readValue(
+                        request.getProductionBrief(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+                
+                ProductionRequirementRequest prodReqRequest = new ProductionRequirementRequest();
+                prodReqRequest.setLeadId(id);
+                prodReqRequest.setRequirementType(normalizeNullable(request.getRequirementType()));
+                prodReqRequest.setRequirementNotes(normalizeNullable(request.getRequirementNotes()));
+                prodReqRequest.setRequirementFileName(normalizeNullable(request.getRequirementFileName()));
+                prodReqRequest.setRequirementFilePath(normalizeNullable(request.getRequirementFilePath()));
+                
+                // Map productDetails section
+                if (productionBriefMap.containsKey("productDetails")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> productDetails = (Map<String, Object>) productionBriefMap.get("productDetails");
+                    if (productDetails != null) {
+                        prodReqRequest.setProductType(asString(productDetails.get("type")));
+                        prodReqRequest.setCustomProductType(asString(productDetails.get("customProductType")));
+                        Object qtyObj = productDetails.get("quantity");
+                        prodReqRequest.setQuantity(asInteger(qtyObj));
+                        Object pagesObj = productDetails.get("pages");
+                        prodReqRequest.setNumPages(asInteger(pagesObj));
+                    }
+                }
+                
+                // Map sizeDetails section
+                if (productionBriefMap.containsKey("sizeDetails")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> sizeDetails = (Map<String, Object>) productionBriefMap.get("sizeDetails");
+                    if (sizeDetails != null) {
+                        prodReqRequest.setPaperSize(asString(sizeDetails.get("size")));
+                        prodReqRequest.setCustomSizeWidth(asDouble(sizeDetails.get("customWidth")));
+                        prodReqRequest.setCustomSizeHeight(asDouble(sizeDetails.get("customHeight")));
+                        prodReqRequest.setCustomSizeUnit(asString(sizeDetails.get("customUnit")));
+                    }
+                }
+                
+                // Map paperSpecifications section
+                if (productionBriefMap.containsKey("paperSpecifications")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> paperSpecs = (Map<String, Object>) productionBriefMap.get("paperSpecifications");
+                    if (paperSpecs != null) {
+                        prodReqRequest.setPaperType(asString(paperSpecs.get("type")));
+                        prodReqRequest.setPaperGsm(asString(paperSpecs.get("gsm")));
+                    }
+                }
+                
+                // Map printingSpecifications section
+                if (productionBriefMap.containsKey("printingSpecifications")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> printSpecs = (Map<String, Object>) productionBriefMap.get("printingSpecifications");
+                    if (printSpecs != null) {
+                        prodReqRequest.setColorType(asString(printSpecs.get("colorType")));
+                        prodReqRequest.setPrintSides(asString(printSpecs.get("printSides")));
+                        prodReqRequest.setPrintingMethod(asString(printSpecs.get("printingMethod")));
+                    }
+                }
+                
+                // Map finishingOptions section
+                if (productionBriefMap.containsKey("finishingOptions")) {
+                    Object finishingObj = productionBriefMap.get("finishingOptions");
+                    if (finishingObj != null) {
+                        if (finishingObj instanceof String) {
+                            prodReqRequest.setFinishingOptions((String) finishingObj);
+                        } else {
+                            prodReqRequest.setFinishingOptions(objectMapper.writeValueAsString(finishingObj));
+                        }
+                    }
+                }
+                
+                // Map foldingType
+                prodReqRequest.setFoldingType(asString(productionBriefMap.get("foldingType")));
+                
+                // Map artworkUpload section (legacy shape)
+                if (productionBriefMap.containsKey("artworkUpload")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> artwork = (Map<String, Object>) productionBriefMap.get("artworkUpload");
+                    if (artwork != null) {
+                        prodReqRequest.setArtworkFileName(asString(artwork.get("fileName")));
+                        prodReqRequest.setArtworkFilePath(asString(artwork.get("filePath")));
+                    }
+                }
+                // Map artworkFile (current frontend shape)
+                String artworkFile = asString(productionBriefMap.get("artworkFile"));
+                if (StringUtils.hasText(artworkFile)) {
+                    if (artworkFile.contains("/") || artworkFile.contains("\\")) {
+                        prodReqRequest.setArtworkFilePath(artworkFile);
+                        prodReqRequest.setArtworkFileName(toFileName(artworkFile));
+                    } else if (!StringUtils.hasText(prodReqRequest.getArtworkFileName())) {
+                        prodReqRequest.setArtworkFileName(artworkFile);
+                    }
+                }
+                
+                prodReqRequest.setAdditionalNotes(asString(productionBriefMap.get("additionalNotes")));
+                
+                // Map deadline & delivery section
+                if (productionBriefMap.containsKey("deadline")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> deadline = (Map<String, Object>) productionBriefMap.get("deadline");
+                    if (deadline != null) {
+                        prodReqRequest.setProductionPrintDeadline(parseDateTimeOrDate(deadline.get("printDeadline")));
+                        prodReqRequest.setProductionDeliveryDate(parseDateTimeOrDate(deadline.get("deliveryDate")));
+                        prodReqRequest.setPriority(asString(deadline.get("priority")));
+                    }
+                }
+                
+                // Save production requirement
+                productionRequirementService.saveProductionRequirement(prodReqRequest, actor.getId());
+            } catch (Exception e) {
+                logger.error("Failed to parse and save production brief: " + e.getMessage(), e);
+                // Don't fail the entire request if production brief parsing fails
+            }
+        }
+
+
         Lead saved = leadRepository.save(row);
         // Sync invoice data to the deal if it was updated (keeps deal in sync after payment approvals)
         if (invoiceUpdated) {
@@ -1086,6 +1291,68 @@ public class LeadService {
         if (val == null) return BigDecimal.ZERO;
         if (val instanceof Number) return new BigDecimal(val.toString());
         try { return new BigDecimal(String.valueOf(val)); } catch (Exception e) { return BigDecimal.ZERO; }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private String asString(Object value) {
+        if (value == null) return null;
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    private Integer asInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private Double asDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value).trim());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private LocalDateTime parseDateTimeOrDate(Object value) {
+        String text = asString(value);
+        if (!StringUtils.hasText(text)) return null;
+        try {
+            return LocalDateTime.parse(text);
+        } catch (Exception ignored) {
+        }
+        try {
+            return LocalDate.parse(text).atStartOfDay();
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private String toFileName(String pathValue) {
+        String value = asString(pathValue);
+        if (!StringUtils.hasText(value)) return null;
+        int slashIdx = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        if (slashIdx >= 0 && slashIdx + 1 < value.length()) {
+            return value.substring(slashIdx + 1);
+        }
+        return value;
     }
 
     public Map<String, Object> uploadPaymentProof(Long id, MultipartFile file, String actorPrincipal) {
@@ -2489,3 +2756,4 @@ public class LeadService {
                 .toList();
     }
 }
+

@@ -1,9 +1,14 @@
 export const LEAD_FLOW_STATUSES = [
   "New Lead",
-  "Deal",
   "Attempted",
   "Interested",
-  "Design",
+  "Budget",
+  "Requirement",
+  "Deal",
+  "Rejected",
+];
+
+export const DEAL_FLOW_STATUSES = [
   "Payment",
   "Allocate",
   "Production",

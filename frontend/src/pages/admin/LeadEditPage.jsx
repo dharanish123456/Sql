@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -15,17 +15,21 @@ import {
   downloadLeadChatAttachment,
   uploadLeadPaymentProof,
 } from "../../api/leadsApi";
-import { getAddressesbyLeadId, createAddress, getAddressesByLeadIdAndType } from "../../api/addressApi";
+import { getAddressesbyLeadId, createAddress, getAddressesByLeadIdAndType, getAddressById } from "../../api/addressApi";
 import { createStockRequest, getStockItems } from "../../api/stocksApi";
 import { getLeadFlow } from "../../api/flowApi";
 import { getLeadStatuses, DEFAULT_LEAD_STATUSES } from "../../api/leadStatusApi";
 import { getLeadTypes } from "../../api/leadTypeApi";
+import { getProductionRequirements, createProductionRequirement } from "../../api/productionRequirementApi";
+import { getDesignRequirement } from "../../api/designRequirementApi";
 import { COUNTRY_CODES } from "../../constants/countryCodes";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
-import { COUNTRY_CODE_OPTIONS, getCountryAllowedLengths, getCountryOptionByValue, sanitizePhoneDigits, validatePhoneNumber } from "../../utils/phoneUtils";
+import { COUNTRY_CODE_OPTIONS, defaultCountryOption, ensureCountryCodeValue, getCountryAllowedLengths, getCountryDisplayMaxLength, getCountryOptionByValue, sanitizePhoneDigits, validatePhoneNumber } from "../../utils/phoneUtils";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../components/system/ToastProvider";
 import StockRequestFormModal from "../../components/system/StockRequestFormModal";
+import RequirementModal from "./RequirementModal";
+import api from "../../utils/api";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -64,6 +68,18 @@ function pickText(row, keys = []) {
     }
   }
   return "";
+}
+
+function parseProductionBrief(briefJson) {
+  if (!briefJson) return null;
+  try {
+    if (typeof briefJson === "string") {
+      return JSON.parse(briefJson);
+    }
+    return briefJson;
+  } catch {
+    return null;
+  }
 }
 
 function toInputDateTime(value) {
@@ -138,6 +154,77 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
   const [requirementFileName, setRequirementFileName] = useState("");
   const [requirementNotes, setRequirementNotes] = useState("");
   const [requirementSaving, setRequirementSaving] = useState(false);
+  const [productionRequirements, setProductionRequirements] = useState([]);
+  const [designRequirement, setDesignRequirement] = useState(null);
+  const [loadingDesignRequirement, setLoadingDesignRequirement] = useState(false);
+  const [loadingRequirements, setLoadingRequirements] = useState(false);
+  const [showRequirementDetailsModal, setShowRequirementDetailsModal] = useState(false);
+  const [selectedRequirement, setSelectedRequirement] = useState(null);
+
+  // Design Brief Fields
+  const [designProductType, setDesignProductType] = useState("");
+  const [designCustomProductType, setDesignCustomProductType] = useState("");
+  const [designSize, setDesignSize] = useState("");
+  const [designCustomSize, setDesignCustomSize] = useState("");
+  const [designOrientation, setDesignOrientation] = useState("");
+  const [designNumPages, setDesignNumPages] = useState("");
+  const [designDescription, setDesignDescription] = useState("");
+  const [designPurpose, setDesignPurpose] = useState("");
+  const [designCustomPurpose, setDesignCustomPurpose] = useState("");
+  const [designTargetAudience, setDesignTargetAudience] = useState("");
+  const [designStylePref, setDesignStylePref] = useState("");
+  const [designBrandColors, setDesignBrandColors] = useState("");
+  const [designFonts, setDesignFonts] = useState("");
+  const [designBrandGuidelinesFile, setDesignBrandGuidelinesFile] = useState(null);
+  const [designBrandGuidelinesName, setDesignBrandGuidelinesName] = useState("");
+  const [designLogoFile, setDesignLogoFile] = useState(null);
+  const [designLogoName, setDesignLogoName] = useState("");
+  const [designImagesFile, setDesignImagesFile] = useState(null);
+  const [designImagesName, setDesignImagesName] = useState("");
+  const [designTextContent, setDesignTextContent] = useState("");
+  const [designWebsite, setDesignWebsite] = useState("");
+  const [designPhone, setDesignPhone] = useState("");
+  const [designAddress, setDesignAddress] = useState("");
+  const [designSocialMedia, setDesignSocialMedia] = useState("");
+  const [designQrCode, setDesignQrCode] = useState("");
+  const [designReferenceImagesFile, setDesignReferenceImagesFile] = useState(null);
+  const [designReferenceImagesName, setDesignReferenceImagesName] = useState("");
+  const [designReferenceLinks, setDesignReferenceLinks] = useState("");
+  const [designPreviousDesignsFile, setDesignPreviousDesignsFile] = useState(null);
+  const [designPreviousDesignsName, setDesignPreviousDesignsName] = useState("");
+  const [designDeadline, setDesignDeadline] = useState("");
+  const [designPriority, setDesignPriority] = useState("");
+  const [designCustomPriority, setDesignCustomPriority] = useState("");
+  const [designAdditionalNotes, setDesignAdditionalNotes] = useState("");
+  const [designRestrictions, setDesignRestrictions] = useState("");
+  const [designColorPrefs, setDesignColorPrefs] = useState("");
+
+  // Design Phone Country Code & Validation
+  const [designPhoneCountryCode, setDesignPhoneCountryCode] = useState(defaultCountryOption.value);
+  const [designPhoneError, setDesignPhoneError] = useState("");
+
+  // Production Brief Fields
+  const [productionProductType, setProductionProductType] = useState("");
+  const [productionCustomProductType, setProductionCustomProductType] = useState("");
+  const [productionQuantity, setProductionQuantity] = useState("");
+  const [productionNumPages, setProductionNumPages] = useState("");
+  const [productionPaperSize, setProductionPaperSize] = useState("");
+  const [productionCustomSizeWidth, setProductionCustomSizeWidth] = useState("");
+  const [productionCustomSizeHeight, setProductionCustomSizeHeight] = useState("");
+  const [productionCustomSizeUnit, setProductionCustomSizeUnit] = useState("mm");
+  const [productionPaperType, setProductionPaperType] = useState("");
+  const [productionPaperGsm, setProductionPaperGsm] = useState("");
+  const [productionColorType, setProductionColorType] = useState("");
+  const [productionPrintSides, setProductionPrintSides] = useState("");
+  const [productionPrintingMethod, setProductionPrintingMethod] = useState("");
+  const [productionFinishingOptions, setProductionFinishingOptions] = useState("");
+  const [productionFoldingType, setProductionFoldingType] = useState("");
+  const [productionArtworkFile, setProductionArtworkFile] = useState(null);
+  const [productionArtworkFileName, setProductionArtworkFileName] = useState("");
+  const [productionAdditionalNotes, setProductionAdditionalNotes] = useState("");
+  const [productionPrintDeadline, setProductionPrintDeadline] = useState("");
+  const [productionDeliveryDate, setProductionDeliveryDate] = useState("");
+  const [productionPriority, setProductionPriority] = useState("Normal");
 
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyPaidAmount, setVerifyPaidAmount] = useState("");
@@ -370,6 +457,77 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
     return () => window.removeEventListener("focus", handleFocus);
   }, [id]);
 
+  // Fetch production requirements when lead loads (with retry for auth errors)
+  useEffect(() => {
+    if (!lead?.id) return;
+    let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const fetchRequirements = async (retryAttempt = 0) => {
+      if (retryAttempt === 0) setLoadingRequirements(true);
+      try {
+        const requirements = await getProductionRequirements(lead.id);
+        if (isMounted) {
+          setProductionRequirements(Array.isArray(requirements) ? requirements : []);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        const status = err?.response?.status;
+        
+        // Retry on 401/403 (auth not ready) with exponential backoff
+        if ((status === 401 || status === 403) && retryAttempt < maxRetries) {
+          const delayMs = Math.pow(2, retryAttempt) * 500; // 500ms, 1s, 2s
+          setTimeout(() => {
+            if (isMounted) fetchRequirements(retryAttempt + 1);
+          }, delayMs);
+          return;
+        }
+
+        // Handle all other errors gracefully
+        if (status === 404 || status === 401 || status === 403) {
+          // Expected: 404 if no requirements exist, 401/403 if auth fails after retries
+          setProductionRequirements([]);
+        } else {
+          console.warn("Failed to fetch production requirements:", err?.message || err);
+          setProductionRequirements([]);
+        }
+      } finally {
+        if (isMounted && retryAttempt === 0) setLoadingRequirements(false);
+      }
+    };
+
+    fetchRequirements();
+    return () => {
+      isMounted = false;
+    };
+  }, [lead?.id]);
+
+  useEffect(() => {
+    if (!lead?.id) return;
+    let isMounted = true;
+
+    const fetchDesignRequirement = async () => {
+      setLoadingDesignRequirement(true);
+      try {
+        const response = await getDesignRequirement(lead.id);
+        if (isMounted) {
+          setDesignRequirement(response || null);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn("Failed to fetch design requirement:", err?.message || err);
+        setDesignRequirement(null);
+      } finally {
+        if (isMounted) setLoadingDesignRequirement(false);
+      }
+    };
+
+    fetchDesignRequirement();
+    return () => {
+      isMounted = false;
+    };
+  }, [lead?.id]);
 
   useEffect(() => {
     if (!lead?.id || autoStatusHandled) return;
@@ -491,8 +649,10 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
     lead?.requirementType || lead?.requirementNotes || lead?.requirementFileName,
   );
   const hasDesignData = Boolean(
-    lead?.designStartAt || lead?.designEndAt || finalDesignMessage?.id,
+    lead?.designStartAt || lead?.designEndAt || finalDesignMessage?.id || designRequirement,
   );
+  const isDesignOnlyRequirement =
+    String(lead?.requirementType || "").trim().toLowerCase() === "design";
   const hasPaymentData = Boolean(
     lead?.totalAmount != null ||
       lead?.paidAmount != null ||
@@ -502,8 +662,13 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
 
   const showAttemptedSummary = hasAttemptedData || isAttempted;
   const showInterestedSummary = hasInterestedData || isInterested;
-  const showRequirementSummary = hasRequirementData || statusLower === "requirement" || statusLower === "budget";
-  const showDesignSummary = hasDesignData || isDesign;
+  const showRequirementSummary =
+    ((hasRequirementData && !isDesignOnlyRequirement) || statusLower === "requirement" || statusLower === "budget");
+  const showDesignSummary =
+    isDesign ||
+    isPayment ||
+    isProduction ||
+    (hasDesignData && hasReachedStage("design"));
   const showPaymentSummary =
     hasPaymentData ||
     isPayment ||
@@ -516,94 +681,96 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
     try { return JSON.parse(lead.invoiceData); } catch { return null; }
   })();
 
-  const parsedVerifiedInvoice = (() => {
-    if (!lead?.paymentVerifiedInvoiceData) return null;
-    try { return JSON.parse(lead.paymentVerifiedInvoiceData); } catch { return null; }
-  })();
 
-  const handleDownloadVerifiedInvoice = () => {
-    if (!parsedVerifiedInvoice) return;
-    try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageMargin = 10;
-      const invoiceNumber = `INV-${lead.leadId || lead.id}`;
-      doc.setFontSize(18);
-      doc.text("INVOICE", pageMargin, 15);
-      doc.setFontSize(10);
-      doc.text("SVL Printing and Packaging", pageMargin, 25);
-      doc.text("GSTIN: 07AABCS1234H1Z0", pageMargin, 30);
-      doc.text("103-A, Industrial Complex, SVL Business Park", pageMargin, 35);
-      doc.text("Bangalore, Karnataka, 560001, India", pageMargin, 40);
-      doc.setFontSize(9);
-      doc.text(`Invoice #: ${invoiceNumber}`, pageWidth - pageMargin - 60, 25);
-      doc.text(`Date: ${parsedVerifiedInvoice.createdAt ? new Date(parsedVerifiedInvoice.createdAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN")}`, pageWidth - pageMargin - 60, 30);
-      doc.text(`Lead: ${lead.name}`, pageWidth - pageMargin - 60, 35);
-      const itemsWithTotals = (parsedVerifiedInvoice.items || []).map(item => ({
-        ...item,
-        subtotal: item.subtotal ?? (Number(item.quantity) * Number(item.unitPrice)),
-      }));
-      autoTable(doc, {
-        startY: 55,
-        head: [["#", "Description", "HSN", "Qty", "Unit Price", "Amount"]],
-        body: itemsWithTotals.map((item, idx) => [
-          String(idx + 1),
-          item.description,
-          item.hsn || "",
-          Number(item.quantity).toFixed(2),
-          Number(item.unitPrice).toFixed(2),
-          Number(item.subtotal).toFixed(2),
-        ]),
-        margin: { left: pageMargin, right: pageMargin },
-        styles: { fontSize: 7.8, cellPadding: 1.5 },
-        headStyles: { fillColor: [41, 128, 185] },
-        columnStyles: { 0: { halign: "center", cellWidth: 10 }, 3: { halign: "right", cellWidth: 18 }, 4: { halign: "right", cellWidth: 28 }, 5: { halign: "right", cellWidth: 28 } },
-      });
-      const t = parsedVerifiedInvoice.totals || {};
-      const finalY = (doc.lastAutoTable?.finalY || 55) + 5;
-      const sx = pageWidth - 72;
-      const sv = pageWidth - pageMargin;
-      const gap = 4.2;
-      doc.setFontSize(8.5);
-      doc.text("Subtotal:", sx, finalY);
-      doc.text(`Rs ${Number(t.subtotal || 0).toFixed(2)}`, sv, finalY, { align: "right" });
-      doc.text(`CGST (${Number(t.cgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap);
-      doc.text(`Rs ${Number(t.cgst || 0).toFixed(2)}`, sv, finalY + gap, { align: "right" });
-      doc.text(`SGST (${Number(t.sgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap * 2);
-      doc.text(`Rs ${Number(t.sgst || 0).toFixed(2)}`, sv, finalY + gap * 2, { align: "right" });
-      doc.setFontSize(9);
-      doc.text("Grand Total:", sx, finalY + gap * 3);
-      doc.text(`Rs ${Number(t.grandTotal || 0).toFixed(2)}`, sv, finalY + gap * 3, { align: "right" });
-      doc.save(`Payment-Verified-Invoice-${invoiceNumber}.pdf`);
-    } catch (err) {
-      console.error("Failed to generate verified invoice PDF:", err);
-    }
-  };
-
-  const handleDownloadInvoice = () => {
+  const handleDownloadInvoice = async () => {
     if (!parsedInvoice) return;
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const pageMargin = 10;
       const invoiceNumber = `INV-${lead.leadId || lead.id}`;
+      const isPaymentType = parsedInvoice.type === "payment";
+
+      // Header
       doc.setFontSize(18);
-      doc.text("INVOICE", pageMargin, 15);
+      doc.text(isPaymentType ? "PAYMENT APPROVAL INVOICE" : "INVOICE", pageMargin, 15);
+
+      // Company details
       doc.setFontSize(10);
       doc.text("SVL Printing and Packaging", pageMargin, 25);
       doc.text("GSTIN: 07AABCS1234H1Z0", pageMargin, 30);
       doc.text("103-A, Industrial Complex, SVL Business Park", pageMargin, 35);
       doc.text("Bangalore, Karnataka, 560001, India", pageMargin, 40);
+      if (isPaymentType) {
+        doc.text("Email: billing@svlprinting.com | Phone: +91-080-41234567", pageMargin, 45);
+      }
+
       doc.setFontSize(9);
       doc.text(`Invoice #: ${invoiceNumber}`, pageWidth - pageMargin - 60, 25);
       doc.text(`Date: ${parsedInvoice.createdAt ? new Date(parsedInvoice.createdAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN")}`, pageWidth - pageMargin - 60, 30);
       doc.text(`Lead: ${lead.name}`, pageWidth - pageMargin - 60, 35);
+
+      let tableStartY = 55;
+
+      // Addresses section for payment invoices
+      if (isPaymentType) {
+        const formatAddress = (address) => {
+          if (!address) return "-";
+          const parts = [
+            address.companyName || address.company_name,
+            address.contactPersonName || address.contact_person_name,
+            address.addressLine1 || address.address_line1,
+            address.addressLine2 || address.address_line2,
+            address.city,
+            address.state,
+            address.pincode,
+            address.country,
+          ].filter(Boolean);
+          return parts.join(", ");
+        };
+
+        let billingAddr = null;
+        let shippingAddr = null;
+        try {
+          if (lead.paymentVerificationBillingAddressId) {
+            billingAddr = await getAddressById(lead.id, lead.paymentVerificationBillingAddressId);
+          }
+          if (lead.paymentVerificationShippingAddressId) {
+            shippingAddr = await getAddressById(lead.id, lead.paymentVerificationShippingAddressId);
+          }
+        } catch (e) { /* addresses optional */ }
+
+        const blockY = 55;
+        const blockHeight = 30;
+        const blockWidth = (pageWidth - pageMargin * 3) / 2;
+        const billingX = pageMargin;
+        const shippingX = pageMargin + blockWidth + pageMargin;
+        const titleY = blockY + 3;
+        const textY = blockY + 9;
+
+        const billingLines = doc.splitTextToSize(formatAddress(billingAddr), blockWidth - 4);
+        const shippingLines = doc.splitTextToSize(formatAddress(shippingAddr), blockWidth - 4);
+
+        doc.rect(billingX, blockY, blockWidth, blockHeight);
+        doc.rect(shippingX, blockY, blockWidth, blockHeight);
+
+        doc.setFontSize(8.5);
+        doc.text("BILLING ADDRESS", billingX + 2, titleY);
+        doc.text("SHIPPING ADDRESS", shippingX + 2, titleY);
+        doc.setFontSize(8);
+        doc.text(billingLines, billingX + 2, textY);
+        doc.text(shippingLines, shippingX + 2, textY);
+
+        tableStartY = blockY + blockHeight + 6;
+      }
+
       const itemsWithTotals = (parsedInvoice.items || []).map(item => ({
         ...item,
         subtotal: item.subtotal ?? (Number(item.quantity) * Number(item.unitPrice)),
       }));
       autoTable(doc, {
-        startY: 55,
+        startY: tableStartY,
         head: [["#", "Description", "HSN", "Qty", "Unit Price", "Amount"]],
         body: itemsWithTotals.map((item, idx) => [
           String(idx + 1),
@@ -619,7 +786,7 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
         columnStyles: { 0: { halign: "center", cellWidth: 10 }, 3: { halign: "right", cellWidth: 18 }, 4: { halign: "right", cellWidth: 28 }, 5: { halign: "right", cellWidth: 28 } },
       });
       const t = parsedInvoice.totals || {};
-      const finalY = (doc.lastAutoTable?.finalY || 55) + 5;
+      const finalY = (doc.lastAutoTable?.finalY || tableStartY) + 5;
       const sx = pageWidth - 72;
       const sv = pageWidth - pageMargin;
       const gap = 4.2;
@@ -633,7 +800,25 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
       doc.setFontSize(9);
       doc.text("Grand Total:", sx, finalY + gap * 3);
       doc.text(`Rs ${Number(t.grandTotal || 0).toFixed(2)}`, sv, finalY + gap * 3, { align: "right" });
-      doc.save(`Invoice-${invoiceNumber}.pdf`);
+
+      if (isPaymentType) {
+        const verifiedAmt = Number(t.verificationAmount || 0);
+        const totalPaid = Number(lead.paidAmount || 0);
+        const remaining = Math.max(0, Number(t.grandTotal || 0) - totalPaid);
+
+        doc.text("Amount Verified (This Payment):", sx, finalY + gap * 4.2);
+        doc.text(`Rs ${verifiedAmt.toFixed(2)}`, sv, finalY + gap * 4.2, { align: "right" });
+        doc.text("Total Paid Amount:", sx, finalY + gap * 5.2);
+        doc.text(`Rs ${totalPaid.toFixed(2)}`, sv, finalY + gap * 5.2, { align: "right" });
+        doc.text("Remaining:", sx, finalY + gap * 6.2);
+        doc.text(`Rs ${remaining.toFixed(2)}`, sv, finalY + gap * 6.2, { align: "right" });
+
+        // Footer
+        doc.setFontSize(8);
+        doc.text("Payment Approved", pageMargin, pageHeight - 10);
+      }
+
+      doc.save(`${isPaymentType ? "Payment-Approved" : "Invoice"}-${invoiceNumber}.pdf`);
     } catch (err) {
       console.error("Failed to generate invoice PDF:", err);
     }
@@ -1218,10 +1403,34 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
       setError("Please select category and add notes");
       return;
     }
-    if (!requirementFile && !requirementFileName) {
-      setError("Please attach a requirement file");
-      return;
+    
+    // Validate based on category
+    if (requirementType === "Design") {
+      if (!designProductType || !designSize || !designOrientation) {
+        setError("Please fill in all required Product Details fields");
+        return;
+      }
+      // Validate phone if provided
+      if (designPhone && designPhone.trim()) {
+        const phoneValidation = validatePhoneNumber(designPhone, designPhoneCountryCode);
+        if (phoneValidation) {
+          setDesignPhoneError(phoneValidation);
+          setError(phoneValidation);
+          return;
+        }
+      }
+    } else if (requirementType === "Production" || requirementType === "Design + Production") {
+      // Validate production fields
+      if (!productionProductType || !productionQuantity || !productionPaperSize || !productionPaperType || !productionColorType) {
+        setError("Please fill in all required production fields: Product Type, Quantity, Paper Size, Paper Type, and Color Type");
+        return;
+      }
+      if (productionPaperSize === "Custom" && (!productionCustomSizeWidth || !productionCustomSizeHeight)) {
+        setError("Please fill in custom size width and height");
+        return;
+      }
     }
+    
     setRequirementSaving(true);
     setError("");
     try {
@@ -1230,24 +1439,255 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
         requirementNotes,
       };
       
-      let fileAttachment = null;
-      if (requirementFile) {
+      // Handle file uploads
+      const uploadedFiles = {};
+      
+      // Upload production file if needed
+      if (requirementFile && (requirementType === "Production" || requirementType === "Design + Production")) {
         try {
-          fileAttachment = await sendLeadChatAttachment(lead.id, {
+          const fileAttachment = await sendLeadChatAttachment(lead.id, {
             threadType: "INTERNAL",
             message: "Requirement file",
             file: requirementFile,
           });
           if (fileAttachment?.id) {
-            detailsPayload.requirementFileName =
-              fileAttachment.attachmentName || fileAttachment.name || requirementFileName;
-            detailsPayload.requirementFileType = fileAttachment.attachmentType;
-            detailsPayload.requirementFileSize = fileAttachment.attachmentSize;
-            detailsPayload.requirementFilePath = `/api/v1/leads/${lead.id}/chat/messages/${fileAttachment.id}/file`;
+            uploadedFiles.requirementFile = {
+              fileName: fileAttachment.attachmentName || fileAttachment.name || requirementFileName,
+              fileType: fileAttachment.attachmentType,
+              fileSize: fileAttachment.attachmentSize,
+              filePath: `/api/v1/leads/${lead.id}/chat/messages/${fileAttachment.id}/file`,
+            };
           }
         } catch (uploadErr) {
-          console.warn("File upload failed but continuing with notes", uploadErr);
+          console.warn("Production file upload failed but continuing", uploadErr);
         }
+      }
+
+      // Upload production artwork file if needed
+      if (productionArtworkFile && (requirementType === "Production" || requirementType === "Design + Production")) {
+        try {
+          const fileAttachment = await sendLeadChatAttachment(lead.id, {
+            threadType: "INTERNAL",
+            message: "Production Artwork",
+            file: productionArtworkFile,
+          });
+          if (fileAttachment?.id) {
+            uploadedFiles.productionArtwork = {
+              fileName: fileAttachment.attachmentName || fileAttachment.name || productionArtworkFileName,
+              fileType: fileAttachment.attachmentType,
+              fileSize: fileAttachment.attachmentSize,
+              filePath: `/api/v1/leads/${lead.id}/chat/messages/${fileAttachment.id}/file`,
+            };
+          }
+        } catch (uploadErr) {
+          console.warn("Production artwork upload failed but continuing", uploadErr);
+        }
+      }
+      
+      // Handle Design brief uploads if applicable
+      if (requirementType === "Design" || requirementType === "Design + Production") {
+        const designBriefFiles = [];
+        
+        // Upload brand guidelines
+        if (designBrandGuidelinesFile) {
+          try {
+            const attachment = await sendLeadChatAttachment(lead.id, {
+              threadType: "INTERNAL",
+              message: "Brand Guidelines",
+              file: designBrandGuidelinesFile,
+            });
+            if (attachment?.id) {
+              designBriefFiles.push({
+                type: "brandGuidelines",
+                fileName: attachment.attachmentName || attachment.name,
+                filePath: `/api/v1/leads/${lead.id}/chat/messages/${attachment.id}/file`,
+              });
+            }
+          } catch (e) {
+            console.warn("Brand guidelines upload failed", e);
+          }
+        }
+        
+        // Upload logo
+        if (designLogoFile) {
+          try {
+            const attachment = await sendLeadChatAttachment(lead.id, {
+              threadType: "INTERNAL",
+              message: "Logo",
+              file: designLogoFile,
+            });
+            if (attachment?.id) {
+              designBriefFiles.push({
+                type: "logo",
+                fileName: attachment.attachmentName || attachment.name,
+                filePath: `/api/v1/leads/${lead.id}/chat/messages/${attachment.id}/file`,
+              });
+            }
+          } catch (e) {
+            console.warn("Logo upload failed", e);
+          }
+        }
+        
+        // Upload client images
+        if (designImagesFile) {
+          try {
+            const attachment = await sendLeadChatAttachment(lead.id, {
+              threadType: "INTERNAL",
+              message: "Client Images",
+              file: designImagesFile,
+            });
+            if (attachment?.id) {
+              designBriefFiles.push({
+                type: "clientImages",
+                fileName: attachment.attachmentName || attachment.name,
+                filePath: `/api/v1/leads/${lead.id}/chat/messages/${attachment.id}/file`,
+              });
+            }
+          } catch (e) {
+            console.warn("Client images upload failed", e);
+          }
+        }
+        
+        // Upload reference images
+        if (designReferenceImagesFile) {
+          try {
+            const attachment = await sendLeadChatAttachment(lead.id, {
+              threadType: "INTERNAL",
+              message: "Reference Images",
+              file: designReferenceImagesFile,
+            });
+            if (attachment?.id) {
+              designBriefFiles.push({
+                type: "referenceImages",
+                fileName: attachment.attachmentName || attachment.name,
+                filePath: `/api/v1/leads/${lead.id}/chat/messages/${attachment.id}/file`,
+              });
+            }
+          } catch (e) {
+            console.warn("Reference images upload failed", e);
+          }
+        }
+        
+        // Upload previous designs
+        if (designPreviousDesignsFile) {
+          try {
+            const attachment = await sendLeadChatAttachment(lead.id, {
+              threadType: "INTERNAL",
+              message: "Previous Designs",
+              file: designPreviousDesignsFile,
+            });
+            if (attachment?.id) {
+              designBriefFiles.push({
+                type: "previousDesigns",
+                fileName: attachment.attachmentName || attachment.name,
+                filePath: `/api/v1/leads/${lead.id}/chat/messages/${attachment.id}/file`,
+              });
+            }
+          } catch (e) {
+            console.warn("Previous designs upload failed", e);
+          }
+        }
+        
+        // Serialize design brief to JSON
+        const designBrief = {
+          productDetails: {
+            type: designProductType === "Custom" ? designCustomProductType : designProductType,
+            size: designSize === "Custom" ? designCustomSize : designSize,
+            orientation: designOrientation,
+            pages: designNumPages,
+          },
+          designBrief: {
+            description: designDescription,
+            purpose: designPurpose === "Custom" ? designCustomPurpose : designPurpose,
+            targetAudience: designTargetAudience,
+            stylePreference: designStylePref,
+          },
+          brandDetails: {
+            colors: designBrandColors,
+            fonts: designFonts,
+            guidelinesFile: designBriefFiles.find(f => f.type === "brandGuidelines") || null,
+          },
+          contentFromClient: {
+            logo: designBriefFiles.find(f => f.type === "logo") || null,
+            images: designBriefFiles.find(f => f.type === "clientImages") || null,
+            textContent: designTextContent,
+            website: designWebsite,
+            phone: designPhone,
+            phoneCountryCode: designPhoneCountryCode,
+            address: designAddress,
+            socialMedia: designSocialMedia,
+            qrCode: designQrCode,
+          },
+          referenceDesigns: {
+            images: designBriefFiles.find(f => f.type === "referenceImages") || null,
+            links: designReferenceLinks,
+            previousDesigns: designBriefFiles.find(f => f.type === "previousDesigns") || null,
+          },
+          deadline: {
+            date: designDeadline,
+            priority: designPriority === "Custom" ? designCustomPriority : designPriority,
+          },
+          specialInstructions: {
+            notes: designAdditionalNotes,
+            restrictions: designRestrictions,
+            colorPreferences: designColorPrefs,
+          },
+        };
+        
+        detailsPayload.designBrief = JSON.stringify(designBrief);
+      }
+      
+      // Handle Production brief serialization if applicable
+      if (requirementType === "Production" || requirementType === "Design + Production") {
+        const productionBrief = {
+          productDetails: {
+            type: productionProductType === "Custom" ? productionCustomProductType : productionProductType,
+            quantity: productionQuantity ? parseInt(productionQuantity) : null,
+            pages: productionNumPages ? parseInt(productionNumPages) : null,
+          },
+          sizeDetails: {
+            size: productionPaperSize === "Custom" ? "Custom" : productionPaperSize,
+            customWidth: productionPaperSize === "Custom" ? (productionCustomSizeWidth ? parseFloat(productionCustomSizeWidth) : null) : null,
+            customHeight: productionPaperSize === "Custom" ? (productionCustomSizeHeight ? parseFloat(productionCustomSizeHeight) : null) : null,
+            customUnit: productionCustomSizeUnit,
+          },
+          paperSpecifications: {
+            type: productionPaperType,
+            gsm: productionPaperGsm,
+          },
+          printingSpecifications: {
+            colorType: productionColorType,
+            printSides: productionPrintSides,
+            printingMethod: productionPrintingMethod,
+          },
+          finishingOptions: productionFinishingOptions || "[]",
+          foldingType: productionFoldingType,
+          artworkFile: uploadedFiles.productionArtwork ? uploadedFiles.productionArtwork.filePath : productionArtworkFileName,
+          additionalNotes: productionAdditionalNotes,
+          deadline: {
+            printDeadline: productionPrintDeadline,
+            deliveryDate: productionDeliveryDate,
+            priority: productionPriority,
+          },
+        };
+        
+        detailsPayload.productionBrief = JSON.stringify(productionBrief);
+        
+        // Add artwork file metadata to payload if uploaded
+        if (uploadedFiles.productionArtwork) {
+          detailsPayload.productionArtworkFileName = uploadedFiles.productionArtwork.fileName;
+          detailsPayload.productionArtworkFileType = uploadedFiles.productionArtwork.fileType;
+          detailsPayload.productionArtworkFileSize = uploadedFiles.productionArtwork.fileSize;
+          detailsPayload.productionArtworkFilePath = uploadedFiles.productionArtwork.filePath;
+        }
+      }
+      
+      // Add uploaded files to payload
+      if (uploadedFiles.requirementFile) {
+        detailsPayload.requirementFileName = uploadedFiles.requirementFile.fileName;
+        detailsPayload.requirementFileType = uploadedFiles.requirementFile.fileType;
+        detailsPayload.requirementFileSize = uploadedFiles.requirementFile.fileSize;
+        detailsPayload.requirementFilePath = uploadedFiles.requirementFile.filePath;
       }
       
       const detailsUpdated = await updateLeadDetails(lead.id, detailsPayload);
@@ -1269,11 +1709,128 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
       const mergedLead = { ...(lead || {}), ...detailsUpdated, ...updated };
       setLead(mergedLead);
       
+      // Create production requirement record if applicable
+      if (requirementType === "Production" || requirementType === "Design + Production") {
+        try {
+          const productionPayload = {
+            requirementType,
+            productType: productionProductType === "Custom" ? productionCustomProductType : productionProductType,
+            quantity: Number(productionQuantity),
+            numPages: productionNumPages ? Number(productionNumPages) : null,
+            paperSize: productionPaperSize === "Custom" ? `Custom: ${productionCustomSizeWidth}${productionCustomSizeUnit}x${productionCustomSizeHeight}${productionCustomSizeUnit}` : productionPaperSize,
+            customSizeWidth: productionCustomSizeWidth,
+            customSizeHeight: productionCustomSizeHeight,
+            customSizeUnit: productionCustomSizeUnit,
+            paperType: productionPaperType,
+            paperGsm: productionPaperGsm,
+            colorType: productionColorType,
+            printSides: productionPrintSides,
+            printingMethod: productionPrintingMethod,
+            finishingOptions: productionFinishingOptions,
+            foldingType: productionFoldingType,
+            artworkFileName: productionArtworkFileName,
+            additionalNotes: productionAdditionalNotes,
+            printDeadline: productionPrintDeadline ? new Date(productionPrintDeadline).toISOString() : null,
+            deliveryDate: productionDeliveryDate ? new Date(productionDeliveryDate).toISOString() : null,
+            priority: productionPriority,
+            leadId: lead.id,
+          };
+          
+          const createdReq = await createProductionRequirement(lead.id, productionPayload);
+          console.log("✓ Production requirement created successfully", createdReq);
+          
+          // Add requirement to local state immediately for display
+          if (createdReq) {
+            setProductionRequirements([createdReq]);
+          } else {
+            // If no response, construct from payload
+            setProductionRequirements([productionPayload]);
+          }
+          
+          // Also try to reload from backend for consistency
+          try {
+            const requirements = await getProductionRequirements(lead.id);
+            // Only update from backend if we actually get data back
+            if (Array.isArray(requirements) && requirements.length > 0) {
+              setProductionRequirements(requirements);
+            } else {
+              console.warn("Backend returned empty requirements list, keeping local copy");
+            }
+          } catch (err) {
+            console.warn("Failed to reload requirements from backend (404), using local data", err);
+            // Keep local data if backend fetch fails
+          }
+        } catch (prodErr) {
+          console.warn("Failed to create production requirement but continuing", prodErr);
+        }
+      }
+      
       // Clear requirement modal state
       setRequirementType("");
       setRequirementFile(null);
       setRequirementFileName("");
       setRequirementNotes("");
+      // Clear design brief fields
+      setDesignProductType("");
+      setDesignCustomProductType("");
+      setDesignSize("");
+      setDesignCustomSize("");
+      setDesignOrientation("");
+      setDesignNumPages("");
+      setDesignDescription("");
+      setDesignPurpose("");
+      setDesignCustomPurpose("");
+      setDesignTargetAudience("");
+      setDesignStylePref("");
+      setDesignBrandColors("");
+      setDesignFonts("");
+      setDesignBrandGuidelinesFile(null);
+      setDesignBrandGuidelinesName("");
+      setDesignLogoFile(null);
+      setDesignLogoName("");
+      setDesignImagesFile(null);
+      setDesignImagesName("");
+      setDesignTextContent("");
+      setDesignWebsite("");
+      setDesignPhone("");
+      setDesignPhoneCountryCode(defaultCountryOption.value);
+      setDesignPhoneError("");
+      setDesignAddress("");
+      setDesignSocialMedia("");
+      setDesignQrCode("");
+      setDesignReferenceImagesFile(null);
+      setDesignReferenceImagesName("");
+      setDesignReferenceLinks("");
+      setDesignPreviousDesignsFile(null);
+      setDesignPreviousDesignsName("");
+      setDesignDeadline("");
+      setDesignPriority("");
+      setDesignCustomPriority("");
+      setDesignAdditionalNotes("");
+      setDesignRestrictions("");
+      setDesignColorPrefs("");
+      // Clear production fields
+      setProductionProductType("");
+      setProductionCustomProductType("");
+      setProductionQuantity("");
+      setProductionNumPages("");
+      setProductionPaperSize("");
+      setProductionCustomSizeWidth("");
+      setProductionCustomSizeHeight("");
+      setProductionCustomSizeUnit("mm");
+      setProductionPaperType("");
+      setProductionPaperGsm("");
+      setProductionColorType("");
+      setProductionPrintSides("");
+      setProductionPrintingMethod("");
+      setProductionFinishingOptions("");
+      setProductionFoldingType("");
+      setProductionArtworkFile(null);
+      setProductionArtworkFileName("");
+      setProductionAdditionalNotes("");
+      setProductionPrintDeadline("");
+      setProductionDeliveryDate("");
+      setProductionPriority("Normal");
       
       showSuccess("Requirement submitted successfully");
       setShowRequirementModal(false);
@@ -1289,6 +1846,79 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
     if (!lead?.id) return;
     navigate(`/leads/${lead.id}/chat`);
   };
+
+  const downloadProtectedFile = async (filePath, fileName, fallbackMessage) => {
+    if (!filePath || !fileName) return;
+    try {
+      const response = await api.get(filePath, {
+        responseType: "blob",
+      });
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      const message = extractApiErrorMessage(e, fallbackMessage);
+      setError(message);
+      showError(message);
+    }
+  };
+
+  const downloadRequirementFile = async () => {
+    await downloadProtectedFile(
+      lead?.requirementFilePath,
+      lead?.requirementFileName,
+      "Failed to download requirement file",
+    );
+  };
+
+  const handleDesignPhoneCountryCodeChange = useCallback((value) => {
+    setDesignPhoneCountryCode(ensureCountryCodeValue(value));
+    setDesignPhone("");
+    setDesignPhoneError("");
+    setError("");
+  }, []);
+
+  const handleDesignPhoneChange = useCallback((value) => {
+    const option = getCountryOptionByValue(designPhoneCountryCode);
+    const lengths = getCountryAllowedLengths(designPhoneCountryCode);
+    setDesignPhone(sanitizePhoneDigits(value, option?.maxLength, lengths));
+    setDesignPhoneError("");
+    setError("");
+  }, [designPhoneCountryCode]);
+
+  const handleDesignStylePrefChange = useCallback((style, currentValue) => {
+    if (currentValue.includes(style)) {
+      const styles = currentValue.split(",").filter(s => s.trim() !== style);
+      return styles.join(",");
+    } else {
+      return currentValue ? `${currentValue},${style}` : style;
+    }
+  }, []);
+
+  const handleDesignProductTypeChange = useCallback((value) => {
+    setDesignProductType(value);
+    if (value !== "Custom") setDesignCustomProductType("");
+  }, []);
+
+  const handleDesignSizeChange = useCallback((value) => {
+    setDesignSize(value);
+    if (value !== "Custom") setDesignCustomSize("");
+  }, []);
+
+  const handleDesignPurposeChange = useCallback((value) => {
+    setDesignPurpose(value);
+    if (value !== "Custom") setDesignCustomPurpose("");
+  }, []);
+
+  const handleDesignPriorityChange = useCallback((value) => {
+    setDesignPriority(value);
+    if (value !== "Custom") setDesignCustomPriority("");
+  }, []);
 
   const handleStatusChange = (newStatus) => {
     setStatusValue(newStatus);
@@ -2218,6 +2848,7 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
 
                 {activeTab === "requirement" && showRequirementSummary && (
                 <div className="tab-pane fade show active">
+                  {/* General Requirement Details */}
                   <div className="mb-4">
                     <h5 className="mb-3">Requirement Details</h5>
                     <div className="row g-3">
@@ -2238,34 +2869,347 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                           rows={3}
                         />
                       </div>
-                      <div className="col-md-6">
-                        <label className="form-label">File</label>
-                        <div className="py-2">
-                          {lead.requirementFileName && lead.requirementFilePath ? (
-                            <div className="d-flex flex-wrap align-items-center gap-2">
-                              <span className="text-break">{lead.requirementFileName}</span>
-                              <a
-                                className="btn btn-outline-secondary btn-sm"
-                                href={lead.requirementFilePath}
-                                download={lead.requirementFileName}
-                              >
-                                Download
-                              </a>
+                 
+                    </div>
+                  </div>
+
+                  {/* Production Requirements Section */}
+                  {productionRequirements.length > 0 && (
+                    <div className="mt-5">
+                      <h5 className="mb-3">
+                        <i className="ti ti-box me-2"></i>Production Requirement Details
+                      </h5>
+                      {productionRequirements.map((req, idx) => {
+                        const prodBrief = parseProductionBrief(req.productionBrief);
+                        return (
+                          <div key={req.id || idx} className="card mb-3">
+                            <div className="card-body">
+                              <div className="row g-3">
+                                {/* Type & Product */}
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Requirement Type</label>
+                                  <input className="form-control form-control-sm" value={req.requirementType || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Product Type</label>
+                                  <input className="form-control form-control-sm" value={req.productType || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Quantity</label>
+                                  <input className="form-control form-control-sm" value={req.quantity || "-"} readOnly />
+                                </div>
+
+                                {/* Paper Details */}
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Paper Size</label>
+                                  <input className="form-control form-control-sm" value={req.paperSize || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Paper Type</label>
+                                  <input className="form-control form-control-sm" value={req.paperType || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">GSM</label>
+                                  <input className="form-control form-control-sm" value={req.paperGsm || "-"} readOnly />
+                                </div>
+
+                                {/* Color & Print */}
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Color Type</label>
+                                  <input className="form-control form-control-sm" value={req.colorType || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Print Sides</label>
+                                  <input className="form-control form-control-sm" value={req.printSides || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Printing Method</label>
+                                  <input className="form-control form-control-sm" value={req.printingMethod || "-"} readOnly />
+                                </div>
+
+                                {/* Finishing Options */}
+                                <div className="col-md-6">
+                                  <label className="form-label fw-semibold">Finishing Options</label>
+                                  <textarea className="form-control form-control-sm" value={req.finishingOptions || "-"} readOnly rows={2} />
+                                </div>
+                                <div className="col-md-6">
+                                  <label className="form-label fw-semibold">Folding Type</label>
+                                  <input className="form-control form-control-sm" value={req.foldingType || "-"} readOnly />
+                                </div>
+
+                                {/* Priority & Dates */}
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Priority</label>
+                                  <input className="form-control form-control-sm" value={req.priority || "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Print Deadline</label>
+                                  <input className="form-control form-control-sm" value={req.printDeadline ? formatDateTime(req.printDeadline) : "-"} readOnly />
+                                </div>
+                                <div className="col-md-4">
+                                  <label className="form-label fw-semibold">Delivery Date</label>
+                                  <input className="form-control form-control-sm" value={req.deliveryDate ? formatDateTime(req.deliveryDate) : "-"} readOnly />
+                                </div>
+
+                                {/* Notes */}
+                                <div className="col-md-12">
+                                  <label className="form-label fw-semibold">Additional Notes</label>
+                                  <textarea className="form-control form-control-sm" value={req.additionalNotes || "-"} readOnly rows={3} />
+                                </div>
+
+                                {/* Artwork File */}
+                                {req.artworkFileName && (
+                                  <div className="col-md-12">
+                                    <label className="form-label fw-semibold">Artwork File</label>
+                                    <div className="py-2 d-flex flex-wrap gap-2 align-items-center">
+                                      <span className="text-break">{req.artworkFileName}</span>
+                                      {req.artworkFilePath && (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-secondary"
+                                          onClick={() => downloadProtectedFile(req.artworkFilePath, req.artworkFileName, "Failed to download artwork file")}
+                                        >
+                                          Download
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          ) : lead.requirementFileName ? (
-                            <span className="text-break">{lead.requirementFileName}</span>
-                          ) : (
-                            <span>-</span>
-                          )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {designRequirement && (
+                    <div className="mt-5">
+                      <h5 className="mb-3">
+                        <i className="ti ti-palette me-2"></i>Design Requirement Details
+                      </h5>
+                      <div className="card mb-3">
+                        <div className="card-body">
+                          <div className="row g-3">
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Requirement Type</label>
+                              <input className="form-control form-control-sm" value={designRequirement.requirementType || "-"} readOnly />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Product Type</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designProductType || "-"} readOnly />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Size</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designSize || "-"} readOnly />
+                            </div>
+
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Orientation</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designOrientation || "-"} readOnly />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Pages</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designNumPages || "-"} readOnly />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Purpose</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designPurpose || "-"} readOnly />
+                            </div>
+
+                            <div className="col-md-6">
+                              <label className="form-label fw-semibold">Target Audience</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designTargetAudience || "-"} readOnly />
+                            </div>
+                            <div className="col-md-6">
+                              <label className="form-label fw-semibold">Style Preference</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designStylePref || "-"} readOnly />
+                            </div>
+
+                            <div className="col-md-6">
+                              <label className="form-label fw-semibold">Brand Colors</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designBrandColors || "-"} readOnly />
+                            </div>
+                            <div className="col-md-6">
+                              <label className="form-label fw-semibold">Fonts</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designFonts || "-"} readOnly />
+                            </div>
+
+                            <div className="col-md-12">
+                              <label className="form-label fw-semibold">Description</label>
+                              <textarea className="form-control form-control-sm" value={designRequirement.designDescription || "-"} readOnly rows={3} />
+                            </div>
+
+                            <div className="col-md-12">
+                              <label className="form-label fw-semibold">Additional Notes</label>
+                              <textarea
+                                className="form-control form-control-sm"
+                                value={designRequirement.designAdditionalNotes || designRequirement.requirementNotes || "-"}
+                                readOnly
+                                rows={3}
+                              />
+                            </div>
+
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Deadline</label>
+                              <input
+                                className="form-control form-control-sm"
+                                value={designRequirement.designDeadline ? formatDateTime(designRequirement.designDeadline) : "-"}
+                                readOnly
+                              />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Priority</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designPriority || "-"} readOnly />
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-semibold">Reference Links</label>
+                              <input className="form-control form-control-sm" value={designRequirement.designReferenceLinks || "-"} readOnly />
+                            </div>
+
+                            {designRequirement.designBrandGuidelinesFileName && (
+                              <div className="col-md-6">
+                                <label className="form-label fw-semibold">Brand Guidelines</label>
+                                <div className="py-2 d-flex flex-wrap gap-2 align-items-center">
+                                  <span className="text-break">{designRequirement.designBrandGuidelinesFileName}</span>
+                                  {designRequirement.designBrandGuidelinesFilePath && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => downloadProtectedFile(designRequirement.designBrandGuidelinesFilePath, designRequirement.designBrandGuidelinesFileName, "Failed to download brand guidelines")}
+                                    >
+                                      Download
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {designRequirement.designLogoFileName && (
+                              <div className="col-md-6">
+                                <label className="form-label fw-semibold">Logo File</label>
+                                <div className="py-2 d-flex flex-wrap gap-2 align-items-center">
+                                  <span className="text-break">{designRequirement.designLogoFileName}</span>
+                                  {designRequirement.designLogoFilePath && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => downloadProtectedFile(designRequirement.designLogoFilePath, designRequirement.designLogoFileName, "Failed to download logo file")}
+                                    >
+                                      Download
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {designRequirement.designImagesFileName && (
+                              <div className="col-md-6">
+                                <label className="form-label fw-semibold">Client Images</label>
+                                <div className="py-2 d-flex flex-wrap gap-2 align-items-center">
+                                  <span className="text-break">{designRequirement.designImagesFileName}</span>
+                                  {designRequirement.designImagesFilePath && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => downloadProtectedFile(designRequirement.designImagesFilePath, designRequirement.designImagesFileName, "Failed to download client images")}
+                                    >
+                                      Download
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {designRequirement.designReferenceImagesFileName && (
+                              <div className="col-md-6">
+                                <label className="form-label fw-semibold">Reference Images</label>
+                                <div className="py-2 d-flex flex-wrap gap-2 align-items-center">
+                                  <span className="text-break">{designRequirement.designReferenceImagesFileName}</span>
+                                  {designRequirement.designReferenceImagesFilePath && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => downloadProtectedFile(designRequirement.designReferenceImagesFilePath, designRequirement.designReferenceImagesFileName, "Failed to download reference images")}
+                                    >
+                                      Download
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {loadingRequirements && (
+                    <div className="text-center py-3">
+                      <small className="text-muted">Loading requirements...</small>
+                    </div>
+                  )}
                 </div>
                 )}
 
                 {activeTab === "budget" && (statusLower === "budget" || lead?.budgetVerificationStatus) && (
                 <div className="tab-pane fade show active">
+                  {/* Production Requirements Summary */}
+                  {productionRequirements.length > 0 && (
+                    <div className="mb-5">
+                      <h5 className="mb-3">
+                        <i className="ti ti-list-check me-2"></i>Selected Requirements
+                      </h5>
+                      <div className="table-responsive">
+                        <table className="table table-sm table-hover mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th>#</th>
+                              <th>Requirement Type</th>
+                              <th>Product Type</th>
+                              <th>Quantity</th>
+                              <th>Paper Size</th>
+                              <th>Color Type</th>
+                              <th>Priority</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productionRequirements.map((req, idx) => (
+                              <tr key={req.id || idx}>
+                                <td className="text-muted">{idx + 1}</td>
+                                <td>
+                                  <span className="badge bg-info">{req.requirementType || "-"}</span>
+                                </td>
+                                <td>{req.productType || "-"}</td>
+                                <td>{req.quantity || "-"}</td>
+                                <td>{req.paperSize || "-"}</td>
+                                <td>{req.colorType || "-"}</td>
+                                <td>
+                                  <span className={`badge ${
+                                    req.priority === "High" ? "bg-danger" : 
+                                    req.priority === "Medium" ? "bg-warning text-dark" : 
+                                    "bg-secondary"
+                                  }`}>
+                                    {req.priority || "Normal"}
+                                  </span>
+                                </td>
+                                <td>
+                                  <button 
+                                    className="btn btn-sm btn-outline-primary"
+                                    onClick={() => {
+                                      setSelectedRequirement(req);
+                                      setShowRequirementDetailsModal(true);
+                                    }}
+                                  >
+                                    <i className="ti ti-eye me-1"></i>View
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="mb-4">
                     <h5 className="mb-3">Budget Verification</h5>
                     {lead?.budgetVerificationStatus && (
@@ -2295,6 +3239,52 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                         <div>{lead.budgetVerificationRejectionReason}</div>
                       </div>
                     )}
+
+                    {/* Selected Requirement Option */}
+                    <div className="row mb-3 p-3 border rounded bg-light">
+                      <div className="col-12">
+                        <label className="form-label"><strong>Requirement Option</strong></label>
+                      </div>
+                      {loadingRequirements ? (
+                        <div className="col-12">
+                          <div className="text-muted d-flex align-items-center gap-2">
+                            <div className="spinner-border spinner-border-sm text-primary" role="status">
+                              <span className="visually-hidden">Loading...</span>
+                            </div>
+                            <span>Loading requirement details...</span>
+                          </div>
+                        </div>
+                      ) : productionRequirements.length > 0 ? (
+                        <>
+                          <div className="col-md-6">
+                            <div className="form-control" style={{ borderColor: "transparent", background: "transparent" }}>
+                              {productionRequirements[0]?.requirementType === "Design + Production" ? "Design & Production" : 
+                               productionRequirements[0]?.requirementType === "Design" ? "Design Only" : 
+                               productionRequirements[0]?.requirementType === "Production" ? "Production Only" : 
+                               productionRequirements[0]?.requirementType || "Unknown"}
+                            </div>
+                          </div>
+                          <div className="col-md-6 d-flex align-items-end">
+                            <button 
+                              className="btn btn-primary w-100"
+                              onClick={() => {
+                                setSelectedRequirement(productionRequirements[0]);
+                                setShowRequirementDetailsModal(true);
+                              }}
+                            >
+                              <i className="ti ti-eye me-1"></i>View Details
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="col-12">
+                          <div className="text-muted">
+                            <i className="ti ti-info-circle me-1"></i>
+                            No requirements submitted yet. Please submit a requirement in the Requirement tab.
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 )}
@@ -2477,7 +3467,7 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                     )}
 
                     {/* Invoice from Accounts */}
-                    {parsedInvoice && (
+                    {parsedInvoice && lead?.paymentVerificationStatus !== "APPROVED" && (
                       <div className="row mb-4">
                         <div className="col-md-12">
                           <div className="card border">
@@ -2558,8 +3548,8 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                       </div>
                     )}
 
-                    {/* Payment Verified Invoice - download only */}
-                    {parsedVerifiedInvoice && (
+                    {/* Payment Verified Invoice - approval invoice from payment verification */}
+                    {parsedInvoice && parsedInvoice.type === "payment" && lead?.paymentVerificationStatus === "APPROVED" && (
                       <div className="row mb-4">
                         <div className="col-md-12">
                           <div className="card border border-success">
@@ -2567,19 +3557,71 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                               <strong className="text-success">
                                 <i className="ti ti-file-check me-1"></i>
                                 Payment Verified Invoice
-                                <span className="badge bg-success ms-2" style={{fontSize:"0.65rem"}}>Verified</span>
+                                <span className="badge bg-success ms-2" style={{fontSize:"0.65rem"}}>Approved</span>
                               </strong>
                               <div className="d-flex align-items-center gap-2">
-                                {parsedVerifiedInvoice.createdAt && (
-                                  <small className="text-muted">{new Date(parsedVerifiedInvoice.createdAt).toLocaleString("en-IN")}</small>
+                                {parsedInvoice.createdAt && (
+                                  <small className="text-muted">{new Date(parsedInvoice.createdAt).toLocaleString("en-IN")}</small>
                                 )}
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-success"
-                                  onClick={handleDownloadVerifiedInvoice}
+                                  onClick={handleDownloadInvoice}
                                 >
                                   <i className="ti ti-download me-1"></i>Download PDF
                                 </button>
+                              </div>
+                            </div>
+                            <div className="card-body p-0">
+                              <div className="table-responsive">
+                                <table className="table table-sm table-bordered mb-0">
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th>#</th>
+                                      <th>Description</th>
+                                      <th>HSN</th>
+                                      <th className="text-end">Qty</th>
+                                      <th className="text-end">Unit Price</th>
+                                      <th className="text-end">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(parsedInvoice.items || []).map((item, idx) => (
+                                      <tr key={idx}>
+                                        <td>{idx + 1}</td>
+                                        <td>{item.description}</td>
+                                        <td>{item.hsn || "-"}</td>
+                                        <td className="text-end">{item.quantity}</td>
+                                        <td className="text-end">&#8377;{Number(item.unitPrice || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        <td className="text-end">&#8377;{Number(item.subtotal ?? item.total ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  {parsedInvoice.totals && (
+                                    <tfoot>
+                                      <tr>
+                                        <td colSpan={5} className="text-end fw-semibold">Subtotal</td>
+                                        <td className="text-end">&#8377;{Number(parsedInvoice.totals.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                      {parsedInvoice.totals.cgst > 0 && (
+                                        <tr>
+                                          <td colSpan={5} className="text-end text-muted">CGST ({parsedInvoice.totals.cgstPercent}%)</td>
+                                          <td className="text-end text-muted">&#8377;{Number(parsedInvoice.totals.cgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      )}
+                                      {parsedInvoice.totals.sgst > 0 && (
+                                        <tr>
+                                          <td colSpan={5} className="text-end text-muted">SGST ({parsedInvoice.totals.sgstPercent}%)</td>
+                                          <td className="text-end text-muted">&#8377;{Number(parsedInvoice.totals.sgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      )}
+                                      <tr className="table-success">
+                                        <td colSpan={5} className="text-end fw-bold">Grand Total</td>
+                                        <td className="text-end fw-bold">&#8377;{Number(parsedInvoice.totals.grandTotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                    </tfoot>
+                                  )}
+                                </table>
                               </div>
                             </div>
                           </div>
@@ -3151,69 +4193,140 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
         </div>
       )}
 
-      {showRequirementModal && (
-        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
-          <div className="card shadow-lg" style={{ width: "100%", maxWidth: "520px" }}>
-            <div className="card-header d-flex align-items-center justify-content-between">
-              <h5 className="mb-0">Requirement</h5>
-              <button
-                type="button"
-                className="btn-close"
-                aria-label="Close"
-                onClick={() => setShowRequirementModal(false)}
-              />
-            </div>
-            <div className="card-body">
-              <div className="mb-3">
-                <label className="form-label">Category</label>
-                <select
-                  className="form-select"
-                  value={requirementType}
-                  onChange={(e) => setRequirementType(e.target.value)}
-                >
-                  <option value="">Select Category</option>
-                  <option value="Requirement">Requirement</option>
-                  <option value="Design">Design</option>
-                  <option value="Production">Production</option>
-                  <option value="Design + Production">Design + Production</option>
-                </select>
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Upload File</label>
-                <input
-                  className="form-control"
-                  type="file"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setRequirementFile(file);
-                    setRequirementFileName(file?.name || "");
-                  }}
-                />
-                {requirementFileName && <div className="text-muted mt-1">{requirementFileName}</div>}
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Requirements Notes</label>
-                <textarea
-                  className="form-control"
-                  rows={3}
-                  value={requirementNotes}
-                  onChange={(e) => setRequirementNotes(e.target.value)}
-                  placeholder="Add notes"
-                />
-              </div>
-              <div className="d-flex justify-content-end">
-                <button
-                  className="btn btn-primary"
-                  onClick={submitRequirement}
-                  disabled={requirementSaving}
-                >
-                  {requirementSaving ? "Saving..." : "Submit"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <RequirementModal
+        showRequirementModal={showRequirementModal}
+        setShowRequirementModal={setShowRequirementModal}
+        requirementType={requirementType}
+        setRequirementType={setRequirementType}
+        requirementFile={requirementFile}
+        setRequirementFile={setRequirementFile}
+        requirementFileName={requirementFileName}
+        setRequirementFileName={setRequirementFileName}
+        requirementNotes={requirementNotes}
+        setRequirementNotes={setRequirementNotes}
+        requirementSaving={requirementSaving}
+        error={error}
+        setError={setError}
+        productionProductType={productionProductType}
+        setProductionProductType={setProductionProductType}
+        productionCustomProductType={productionCustomProductType}
+        setProductionCustomProductType={setProductionCustomProductType}
+        productionQuantity={productionQuantity}
+        setProductionQuantity={setProductionQuantity}
+        productionNumPages={productionNumPages}
+        setProductionNumPages={setProductionNumPages}
+        productionPaperSize={productionPaperSize}
+        setProductionPaperSize={setProductionPaperSize}
+        productionCustomSizeWidth={productionCustomSizeWidth}
+        setProductionCustomSizeWidth={setProductionCustomSizeWidth}
+        productionCustomSizeHeight={productionCustomSizeHeight}
+        setProductionCustomSizeHeight={setProductionCustomSizeHeight}
+        productionCustomSizeUnit={productionCustomSizeUnit}
+        setProductionCustomSizeUnit={setProductionCustomSizeUnit}
+        productionPaperType={productionPaperType}
+        setProductionPaperType={setProductionPaperType}
+        productionPaperGsm={productionPaperGsm}
+        setProductionPaperGsm={setProductionPaperGsm}
+        productionColorType={productionColorType}
+        setProductionColorType={setProductionColorType}
+        productionPrintSides={productionPrintSides}
+        setProductionPrintSides={setProductionPrintSides}
+        productionPrintingMethod={productionPrintingMethod}
+        setProductionPrintingMethod={setProductionPrintingMethod}
+        productionFinishingOptions={productionFinishingOptions}
+        setProductionFinishingOptions={setProductionFinishingOptions}
+        productionFoldingType={productionFoldingType}
+        setProductionFoldingType={setProductionFoldingType}
+        productionArtworkFile={productionArtworkFile}
+        setProductionArtworkFile={setProductionArtworkFile}
+        productionArtworkFileName={productionArtworkFileName}
+        setProductionArtworkFileName={setProductionArtworkFileName}
+        productionAdditionalNotes={productionAdditionalNotes}
+        setProductionAdditionalNotes={setProductionAdditionalNotes}
+        productionPrintDeadline={productionPrintDeadline}
+        setProductionPrintDeadline={setProductionPrintDeadline}
+        productionDeliveryDate={productionDeliveryDate}
+        setProductionDeliveryDate={setProductionDeliveryDate}
+        productionPriority={productionPriority}
+        setProductionPriority={setProductionPriority}
+        designProductType={designProductType}
+        setDesignProductType={setDesignProductType}
+        designCustomProductType={designCustomProductType}
+        setDesignCustomProductType={setDesignCustomProductType}
+        designSize={designSize}
+        setDesignSize={setDesignSize}
+        designCustomSize={designCustomSize}
+        setDesignCustomSize={setDesignCustomSize}
+        designOrientation={designOrientation}
+        setDesignOrientation={setDesignOrientation}
+        designNumPages={designNumPages}
+        setDesignNumPages={setDesignNumPages}
+        designDescription={designDescription}
+        setDesignDescription={setDesignDescription}
+        designPurpose={designPurpose}
+        setDesignPurpose={setDesignPurpose}
+        designCustomPurpose={designCustomPurpose}
+        setDesignCustomPurpose={setDesignCustomPurpose}
+        designTargetAudience={designTargetAudience}
+        setDesignTargetAudience={setDesignTargetAudience}
+        designStylePref={designStylePref}
+        setDesignStylePref={setDesignStylePref}
+        designBrandColors={designBrandColors}
+        setDesignBrandColors={setDesignBrandColors}
+        designFonts={designFonts}
+        setDesignFonts={setDesignFonts}
+        designBrandGuidelinesFile={designBrandGuidelinesFile}
+        setDesignBrandGuidelinesFile={setDesignBrandGuidelinesFile}
+        designBrandGuidelinesName={designBrandGuidelinesName}
+        setDesignBrandGuidelinesName={setDesignBrandGuidelinesName}
+        designLogoFile={designLogoFile}
+        setDesignLogoFile={setDesignLogoFile}
+        designLogoName={designLogoName}
+        setDesignLogoName={setDesignLogoName}
+        designImagesFile={designImagesFile}
+        setDesignImagesFile={setDesignImagesFile}
+        designImagesName={designImagesName}
+        setDesignImagesName={setDesignImagesName}
+        designTextContent={designTextContent}
+        setDesignTextContent={setDesignTextContent}
+        designWebsite={designWebsite}
+        setDesignWebsite={setDesignWebsite}
+        designPhone={designPhone}
+        setDesignPhone={setDesignPhone}
+        designPhoneCountryCode={designPhoneCountryCode}
+        setDesignPhoneCountryCode={setDesignPhoneCountryCode}
+        designPhoneError={designPhoneError}
+        setDesignPhoneError={setDesignPhoneError}
+        designAddress={designAddress}
+        setDesignAddress={setDesignAddress}
+        designSocialMedia={designSocialMedia}
+        setDesignSocialMedia={setDesignSocialMedia}
+        designQrCode={designQrCode}
+        setDesignQrCode={setDesignQrCode}
+        designReferenceImagesFile={designReferenceImagesFile}
+        setDesignReferenceImagesFile={setDesignReferenceImagesFile}
+        designReferenceImagesName={designReferenceImagesName}
+        setDesignReferenceImagesName={setDesignReferenceImagesName}
+        designReferenceLinks={designReferenceLinks}
+        setDesignReferenceLinks={setDesignReferenceLinks}
+        designPreviousDesignsFile={designPreviousDesignsFile}
+        setDesignPreviousDesignsFile={setDesignPreviousDesignsFile}
+        designPreviousDesignsName={designPreviousDesignsName}
+        setDesignPreviousDesignsName={setDesignPreviousDesignsName}
+        designDeadline={designDeadline}
+        setDesignDeadline={setDesignDeadline}
+        designPriority={designPriority}
+        setDesignPriority={setDesignPriority}
+        designCustomPriority={designCustomPriority}
+        setDesignCustomPriority={setDesignCustomPriority}
+        designAdditionalNotes={designAdditionalNotes}
+        setDesignAdditionalNotes={setDesignAdditionalNotes}
+        designRestrictions={designRestrictions}
+        setDesignRestrictions={setDesignRestrictions}
+        designColorPrefs={designColorPrefs}
+        setDesignColorPrefs={setDesignColorPrefs}
+        onSubmit={submitRequirement}
+      />
 
       {showDesignDurationModal && (
         <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
@@ -3544,7 +4657,7 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
                     }}
                   >
                     {COUNTRY_CODE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
+                      <option key={opt.country} value={opt.value}>
                         {opt.label}
                       </option>
                     ))}
@@ -3758,6 +4871,197 @@ export default function LeadEditPage({ leadIdOverride } = {}) {
           </div>
         </div>
       )}
+
+      {showRequirementDetailsModal && selectedRequirement && (
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
+          <div className="card shadow-lg" style={{ width: "100%", maxWidth: "700px", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="card-header d-flex align-items-center justify-content-between sticky-top bg-white">
+              <h5 className="mb-0">
+                <i className="ti ti-file-document me-2"></i>Requirement Details
+              </h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={() => {
+                  setShowRequirementDetailsModal(false);
+                  setSelectedRequirement(null);
+                }}
+              />
+            </div>
+            <div className="card-body">
+              {/* Requirement Type Badge */}
+              <div className="mb-3">
+                <span className="badge bg-info me-2">
+                  {selectedRequirement.requirementType || "Unknown"}
+                </span>
+                {selectedRequirement.priority && (
+                  <span className={`badge ${selectedRequirement.priority === "High" ? "bg-danger" : selectedRequirement.priority === "Medium" ? "bg-warning" : "bg-success"}`}>
+                    {selectedRequirement.priority}
+                  </span>
+                )}
+              </div>
+
+              {/* Production Brief Details */}
+              {selectedRequirement.productionBrief && (
+                <>
+                  <h6 className="border-bottom pb-2 mt-4"><strong>Product Specifications</strong></h6>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Product Type</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.productType || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Quantity</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.quantity || "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Paper Size</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.paperSize || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Paper GSM</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.paperGsm || "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Color Type</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.colorType || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Printing Method</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.printingMethod || "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Finishing Options</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.finishingOptions || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Print Sides</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.printSides || "-"}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Design Brief Details */}
+              {selectedRequirement.designBrief && (
+                <>
+                  <h6 className="border-bottom pb-2 mt-4"><strong>Design Brief</strong></h6>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Product Type</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.designProductType || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Size</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.designSize || "-"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Orientation</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.designOrientation || "-"}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label text-muted">Purpose</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                        {selectedRequirement.designPurpose || "-"}
+                      </div>
+                    </div>
+                  </div>
+                  {selectedRequirement.designDescription && (
+                    <div className="mb-3">
+                      <label className="form-label text-muted">Description</label>
+                      <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                        {selectedRequirement.designDescription}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Deadlines and Dates */}
+              {(selectedRequirement.deadline || selectedRequirement.deliveryDate) && (
+                <>
+                  <h6 className="border-bottom pb-2 mt-4"><strong>Timeline</strong></h6>
+                  <div className="row mb-3">
+                    {selectedRequirement.deadline && (
+                      <div className="col-md-6">
+                        <label className="form-label text-muted">Deadline</label>
+                        <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                          {new Date(selectedRequirement.deadline).toLocaleDateString("en-IN")}
+                        </div>
+                      </div>
+                    )}
+                    {selectedRequirement.deliveryDate && (
+                      <div className="col-md-6">
+                        <label className="form-label text-muted">Delivery Date</label>
+                        <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0" }}>
+                          {new Date(selectedRequirement.deliveryDate).toLocaleDateString("en-IN")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Notes */}
+              {selectedRequirement.notes && (
+                <>
+                  <h6 className="border-bottom pb-2 mt-4"><strong>Additional Notes</strong></h6>
+                  <div className="mb-3">
+                    <div className="form-control" style={{ borderColor: "transparent", background: "transparent", padding: "0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {selectedRequirement.notes}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Close Button */}
+              <div className="d-flex justify-content-end gap-2 mt-4">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowRequirementDetailsModal(false);
+                    setSelectedRequirement(null);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <StockRequestFormModal
         open={showStockRequestModal}
         leadId={lead?.id}

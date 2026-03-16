@@ -18,7 +18,7 @@ import {
 } from "../../api/leadsApi";
 import { getAddressesbyLeadId, createAddress, getAddressesByLeadIdAndType } from "../../api/addressApi";
 import { createStockRequest, getStockItems } from "../../api/stocksApi";
-import { getLeadFlow } from "../../api/flowApi";
+import { getDealFlow } from "../../api/flowApi";
 import { getLeadStatuses, DEFAULT_LEAD_STATUSES } from "../../api/leadStatusApi";
 import { getLeadTypes } from "../../api/leadTypeApi";
 import { COUNTRY_CODES } from "../../constants/countryCodes";
@@ -639,7 +639,7 @@ export default function DealEditPage() {
     let active = true;
     const loadFlow = async () => {
       try {
-        const flow = await getLeadFlow();
+        const flow = await getDealFlow();
         if (!active) return;
         setFlowRules(Array.isArray(flow?.rules) ? flow.rules : []);
       } catch (e) {

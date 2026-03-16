@@ -23,6 +23,9 @@ public class LeadFlowConfig {
     @Column(name = "rules_json", columnDefinition = "text")
     private String rulesJson;
 
+    @Column(name = "statuses_json", columnDefinition = "text")
+    private String statusesJson;
+
     @Column(name = "updated_by", length = 120)
     private String updatedBy;
 
@@ -55,6 +58,14 @@ public class LeadFlowConfig {
 
     public void setDefaultGroupId(Long defaultGroupId) {
         this.defaultGroupId = defaultGroupId;
+    }
+
+    public String getStatusesJson() {
+        return statusesJson;
+    }
+
+    public void setStatusesJson(String statusesJson) {
+        this.statusesJson = statusesJson;
     }
 
     public String getRulesJson() {

@@ -7,6 +7,7 @@ import java.util.Map;
 public class LeadFlowResponse {
     private Long defaultGroupId;
     private List<Map<String, Object>> rules;
+    private List<String> statuses;
     private String updatedBy;
     private LocalDateTime updatedAt;
 
@@ -24,6 +25,14 @@ public class LeadFlowResponse {
 
     public void setRules(List<Map<String, Object>> rules) {
         this.rules = rules;
+    }
+
+    public List<String> getStatuses() {
+        return statuses;
+    }
+
+    public void setStatuses(List<String> statuses) {
+        this.statuses = statuses;
     }
 
     public String getUpdatedBy() {

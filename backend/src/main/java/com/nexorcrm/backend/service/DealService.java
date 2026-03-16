@@ -58,7 +58,7 @@ public class DealService {
         deal.setInvoiceData(lead.getInvoiceData());
         deal.setInvoiceCgstPercent(lead.getInvoiceCgstPercent());
         deal.setInvoiceSgstPercent(lead.getInvoiceSgstPercent());
-        deal.setStatus(lead.getStatus());
+        deal.setStatus("Payment");
         if (deal.getConvertedAt() == null) {
             deal.setConvertedAt(LocalDateTime.now());
         }
@@ -144,7 +144,7 @@ public class DealService {
         
         // Auto-assign payment verification to deal owner when status changes to payment
         if ("payment".equalsIgnoreCase(newStatus) && deal.getOwnerUserId() != null && deal.getSourceLeadId() != null) {
-            leadRepository.findByIdAndIsDeletedFalse(deal.getSourceLeadId()).ifPresent(lead -> {
+            leadRepository.findByIdAndDeletedFalse(deal.getSourceLeadId()).ifPresent(lead -> {
                 lead.setPaymentVerificationAssignedToUserId(deal.getOwnerUserId());
                 leadRepository.save(lead);
             });
@@ -160,12 +160,12 @@ public class DealService {
     public void syncLeadStatusToDeal(Long sourceLeadId, String leadStatus, String actorPrincipal) {
         dealRepository.findBySourceLeadIdAndDeletedFalse(sourceLeadId).ifPresent(deal -> {
             deal.setStatus(leadStatus);
-            deal = dealRepository.save(deal);
+            final Deal savedDeal = dealRepository.save(deal);
             
             // Auto-assign payment verification to deal owner when status is payment
-            if ("payment".equalsIgnoreCase(leadStatus) && deal.getOwnerUserId() != null) {
-                leadRepository.findByIdAndIsDeletedFalse(sourceLeadId).ifPresent(lead -> {
-                    lead.setPaymentVerificationAssignedToUserId(deal.getOwnerUserId());
+            if ("payment".equalsIgnoreCase(leadStatus) && savedDeal.getOwnerUserId() != null) {
+                leadRepository.findByIdAndDeletedFalse(sourceLeadId).ifPresent(lead -> {
+                    lead.setPaymentVerificationAssignedToUserId(savedDeal.getOwnerUserId());
                     leadRepository.save(lead);
                 });
             }

@@ -9,8 +9,20 @@ import {
   getLeadInvoiceItems,
   saveLeadInvoiceItems,
 } from "../../api/leadsApi";
+import { getProductionRequirements } from "../../api/productionRequirementApi";
+import { getDesignRequirement } from "../../api/designRequirementApi";
 import { useToast } from "../../components/system/ToastProvider";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
+import api from "../../utils/api";
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return String(value);
+  }
+}
 
 export default function BudgetVerificationApprovePage() {
   const { leadId } = useParams();
@@ -27,6 +39,9 @@ export default function BudgetVerificationApprovePage() {
   const [savingItems, setSavingItems] = useState(false);
   const [invoiceCgstPercent, setInvoiceCgstPercent] = useState(0);
   const [invoiceSgstPercent, setInvoiceSgstPercent] = useState(0);
+  const [productionRequirements, setProductionRequirements] = useState([]);
+  const [designRequirement, setDesignRequirement] = useState(null);
+  const [showRequirementDetailsModal, setShowRequirementDetailsModal] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +92,31 @@ export default function BudgetVerificationApprovePage() {
       }
     };
     loadItems();
+  }, [lead?.id]);
+
+  useEffect(() => {
+    if (!lead?.id) return;
+    let mounted = true;
+
+    const loadRequirementDetails = async () => {
+      try {
+        const [productionRows, designRow] = await Promise.all([
+          getProductionRequirements(lead.id),
+          getDesignRequirement(lead.id),
+        ]);
+        if (!mounted) return;
+        setProductionRequirements(Array.isArray(productionRows) ? productionRows : []);
+        setDesignRequirement(designRow || null);
+      } catch (err) {
+        if (!mounted) return;
+        console.warn("Failed to load budget requirement details:", err);
+      }
+    };
+
+    loadRequirementDetails();
+    return () => {
+      mounted = false;
+    };
   }, [lead?.id]);
 
   const handleApprove = async () => {
@@ -207,6 +247,22 @@ export default function BudgetVerificationApprovePage() {
       URL.revokeObjectURL(url);
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to download requirement file"));
+    }
+  };
+
+  const downloadProtectedFile = async (filePath, fileName) => {
+    try {
+      const response = await api.get(filePath, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName || "download";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(extractApiErrorMessage(e, "Failed to download file"));
     }
   };
 
@@ -382,7 +438,15 @@ export default function BudgetVerificationApprovePage() {
       {(lead.requirementType || lead.requirementNotes || lead.requirementFileName) && (
         <div className="card mb-4">
           <div className="card-header">
-            <h6 className="mb-0"><i className="ti ti-file-description me-2"></i>Requirement Details</h6>
+            <div className="d-flex justify-content-between align-items-center">
+              <h6 className="mb-0"><i className="ti ti-file-description me-2"></i>Requirement Details</h6>
+              <button
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => setShowRequirementDetailsModal(true)}
+              >
+                <i className="ti ti-eye me-1"></i>View
+              </button>
+            </div>
           </div>
           <div className="card-body">
             <div className="row g-3">
@@ -411,6 +475,126 @@ export default function BudgetVerificationApprovePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showRequirementDetailsModal && (
+        <>
+          <div className="modal fade show" style={{ display: "block" }} tabIndex="-1" aria-modal="true" role="dialog">
+            <div className="modal-dialog modal-xl modal-dialog-scrollable">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Requirement Details for #{lead.leadId || lead.id}</h5>
+                  <button type="button" className="btn-close" onClick={() => setShowRequirementDetailsModal(false)} />
+                </div>
+                <div className="modal-body">
+                  <div className="row g-3 mb-4">
+                    <div className="col-md-4">
+                      <div className="text-muted small mb-1">Lead Name</div>
+                      <div className="fw-semibold">{lead.name || "-"}</div>
+                    </div>
+                    <div className="col-md-4">
+                      <div className="text-muted small mb-1">Selected Category</div>
+                      <span className="badge bg-secondary fs-6">{lead.requirementType || "-"}</span>
+                    </div>
+                    <div className="col-md-4">
+                      <div className="text-muted small mb-1">Notes</div>
+                      <div className="fw-semibold">{lead.requirementNotes || "-"}</div>
+                    </div>
+                    {lead.requirementFileName && (
+                      <div className="col-md-12">
+                        <div className="d-flex flex-wrap gap-2 align-items-center">
+                          <div className="fw-semibold text-break">{lead.requirementFileName}</div>
+                          <button className="btn btn-sm btn-outline-secondary" onClick={downloadRequirementFile}>
+                            <i className="ti ti-download me-1"></i>Download
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {designRequirement && (
+                    <div className="card mb-4">
+                      <div className="card-header">
+                        <h6 className="mb-0"><i className="ti ti-palette me-2"></i>Design Requirement Details</h6>
+                      </div>
+                      <div className="card-body">
+                        <div className="row g-3">
+                          <div className="col-md-4"><div className="text-muted small mb-1">Requirement Type</div><div className="fw-semibold">{designRequirement.requirementType || "-"}</div></div>
+                          <div className="col-md-4"><div className="text-muted small mb-1">Product Type</div><div className="fw-semibold">{designRequirement.designProductType || "-"}</div></div>
+                          <div className="col-md-4"><div className="text-muted small mb-1">Size</div><div className="fw-semibold">{designRequirement.designSize || "-"}</div></div>
+                          <div className="col-md-4"><div className="text-muted small mb-1">Orientation</div><div className="fw-semibold">{designRequirement.designOrientation || "-"}</div></div>
+                          <div className="col-md-4"><div className="text-muted small mb-1">Pages</div><div className="fw-semibold">{designRequirement.designNumPages || "-"}</div></div>
+                          <div className="col-md-4"><div className="text-muted small mb-1">Purpose</div><div className="fw-semibold">{designRequirement.designPurpose || "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Target Audience</div><div className="fw-semibold">{designRequirement.designTargetAudience || "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Style Preference</div><div className="fw-semibold">{designRequirement.designStylePref || "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Brand Colors</div><div className="fw-semibold">{designRequirement.designBrandColors || "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Fonts</div><div className="fw-semibold">{designRequirement.designFonts || "-"}</div></div>
+                          <div className="col-md-12"><div className="text-muted small mb-1">Description</div><div className="fw-semibold">{designRequirement.designDescription || "-"}</div></div>
+                          <div className="col-md-12"><div className="text-muted small mb-1">Additional Notes</div><div className="fw-semibold">{designRequirement.designAdditionalNotes || designRequirement.requirementNotes || "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Deadline</div><div className="fw-semibold">{designRequirement.designDeadline ? formatDateTime(designRequirement.designDeadline) : "-"}</div></div>
+                          <div className="col-md-6"><div className="text-muted small mb-1">Priority</div><div className="fw-semibold">{designRequirement.designPriority || "-"}</div></div>
+                          <div className="col-md-12"><div className="text-muted small mb-1">Reference Links</div><div className="fw-semibold">{designRequirement.designReferenceLinks || "-"}</div></div>
+                          {designRequirement.designBrandGuidelinesFileName && (
+                            <div className="col-md-6"><div className="text-muted small mb-1">Brand Guidelines</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{designRequirement.designBrandGuidelinesFileName}</div>{designRequirement.designBrandGuidelinesFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(designRequirement.designBrandGuidelinesFilePath, designRequirement.designBrandGuidelinesFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                          )}
+                          {designRequirement.designLogoFileName && (
+                            <div className="col-md-6"><div className="text-muted small mb-1">Logo File</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{designRequirement.designLogoFileName}</div>{designRequirement.designLogoFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(designRequirement.designLogoFilePath, designRequirement.designLogoFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                          )}
+                          {designRequirement.designImagesFileName && (
+                            <div className="col-md-6"><div className="text-muted small mb-1">Client Images</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{designRequirement.designImagesFileName}</div>{designRequirement.designImagesFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(designRequirement.designImagesFilePath, designRequirement.designImagesFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                          )}
+                          {designRequirement.designReferenceImagesFileName && (
+                            <div className="col-md-6"><div className="text-muted small mb-1">Reference Images</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{designRequirement.designReferenceImagesFileName}</div>{designRequirement.designReferenceImagesFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(designRequirement.designReferenceImagesFilePath, designRequirement.designReferenceImagesFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                          )}
+                          {designRequirement.designPreviousDesignsFileName && (
+                            <div className="col-md-6"><div className="text-muted small mb-1">Previous Designs</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{designRequirement.designPreviousDesignsFileName}</div>{designRequirement.designPreviousDesignsFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(designRequirement.designPreviousDesignsFilePath, designRequirement.designPreviousDesignsFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {productionRequirements.length > 0 && (
+                    <div className="card">
+                      <div className="card-header">
+                        <h6 className="mb-0"><i className="ti ti-box me-2"></i>Production Requirement Details</h6>
+                      </div>
+                      <div className="card-body">
+                        {productionRequirements.map((req, idx) => (
+                          <div key={req.id || idx} className={idx > 0 ? "border-top pt-3 mt-3" : ""}>
+                            <div className="row g-3">
+                              <div className="col-md-3"><div className="text-muted small mb-1">Requirement Type</div><div className="fw-semibold">{req.requirementType || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Product Type</div><div className="fw-semibold">{req.productType || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Quantity</div><div className="fw-semibold">{req.quantity || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Paper Size</div><div className="fw-semibold">{req.paperSize || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Paper Type</div><div className="fw-semibold">{req.paperType || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">GSM</div><div className="fw-semibold">{req.paperGsm || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Color Type</div><div className="fw-semibold">{req.colorType || "-"}</div></div>
+                              <div className="col-md-3"><div className="text-muted small mb-1">Print Sides</div><div className="fw-semibold">{req.printSides || "-"}</div></div>
+                              <div className="col-md-6"><div className="text-muted small mb-1">Printing Method</div><div className="fw-semibold">{req.printingMethod || "-"}</div></div>
+                              <div className="col-md-6"><div className="text-muted small mb-1">Finishing Options</div><div className="fw-semibold">{req.finishingOptions || "-"}</div></div>
+                              <div className="col-md-4"><div className="text-muted small mb-1">Priority</div><div className="fw-semibold">{req.priority || "-"}</div></div>
+                              <div className="col-md-4"><div className="text-muted small mb-1">Print Deadline</div><div className="fw-semibold">{req.printDeadline ? formatDateTime(req.printDeadline) : "-"}</div></div>
+                              <div className="col-md-4"><div className="text-muted small mb-1">Delivery Date</div><div className="fw-semibold">{req.deliveryDate ? formatDateTime(req.deliveryDate) : "-"}</div></div>
+                              <div className="col-md-12"><div className="text-muted small mb-1">Additional Notes</div><div className="fw-semibold">{req.additionalNotes || "-"}</div></div>
+                              {req.artworkFileName && (
+                                <div className="col-md-12"><div className="text-muted small mb-1">Artwork File</div><div className="d-flex flex-wrap gap-2 align-items-center"><div className="fw-semibold text-break">{req.artworkFileName}</div>{req.artworkFilePath && <button className="btn btn-sm btn-outline-secondary" onClick={() => downloadProtectedFile(req.artworkFilePath, req.artworkFileName)}><i className="ti ti-download me-1"></i>Download</button>}</div></div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-secondary" onClick={() => setShowRequirementDetailsModal(false)}>Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show"></div>
+        </>
       )}
 
       <div className="row">

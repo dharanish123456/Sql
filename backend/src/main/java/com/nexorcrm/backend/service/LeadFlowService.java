@@ -60,6 +60,7 @@ public class LeadFlowService {
         });
         config.setDefaultGroupId(request.getDefaultGroupId());
         config.setRulesJson(serializeRules(request.getRules()));
+        config.setStatusesJson(serializeStatuses(request.getStatuses()));
         if (StringUtils.hasText(actorPrincipal)) {
             config.setUpdatedBy(actorPrincipal);
         }
@@ -152,10 +153,29 @@ public class LeadFlowService {
         }
     }
 
+    private String serializeStatuses(List<String> statuses) {
+        try {
+            if (statuses == null) return null;
+            return objectMapper.writeValueAsString(statuses);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to save flow statuses");
+        }
+    }
+
+    private List<String> parseStatuses(String json) {
+        try {
+            if (!StringUtils.hasText(json)) return null;
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private LeadFlowResponse toResponse(LeadFlowConfig config) {
         LeadFlowResponse response = new LeadFlowResponse();
         response.setDefaultGroupId(config.getDefaultGroupId());
         response.setRules(parseRules(config.getRulesJson()));
+        response.setStatuses(parseStatuses(config.getStatusesJson()));
         response.setUpdatedBy(config.getUpdatedBy());
         response.setUpdatedAt(config.getUpdatedAt());
         return response;

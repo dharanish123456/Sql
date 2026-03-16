@@ -1,0 +1,1 @@
+import{C as e}from"./index-BKpstayG.js";async function n(){const a=await e.get("/api/v1/deals");return Array.isArray(a?.data)?a.data:[]}async function r(a){return(await e.get(`/api/v1/deals/${a}`))?.data||null}async function i(a){await e.delete(`/api/v1/deals/${a}`)}export{n as a,i as d,r as g};

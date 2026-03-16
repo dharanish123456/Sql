@@ -37,6 +37,8 @@ import { CRM_PAGE_OPTIONS } from "../../constants/crmPages";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../components/system/ToastProvider";
 import useConfirmDialog from "../../components/system/useConfirmDialog";
+import ProductionModal from "./ProductionModal";
+import { saveProductionRequirement, getProductionRequirement } from "../../api/productionRequirementApi";
 
 const EMPTY_CREATE_FORM = {
   projectName: "",
@@ -277,6 +279,31 @@ export default function LeadsPage() {
   const [showRemarkModal, setShowRemarkModal] = useState(false);
   const [remarkLead, setRemarkLead] = useState(null);
   const [remarkValue, setRemarkValue] = useState("");
+
+  // Production Requirements State
+  const [showProductionModal, setShowProductionModal] = useState(false);
+  const [currentLeadId, setCurrentLeadId] = useState(null);
+  const [productType, setProductType] = useState("");
+  const [customProductType, setCustomProductType] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [numPages, setNumPages] = useState("");
+  const [paperSize, setPaperSize] = useState("");
+  const [customSizeWidth, setCustomSizeWidth] = useState("");
+  const [customSizeHeight, setCustomSizeHeight] = useState("");
+  const [customSizeUnit, setCustomSizeUnit] = useState("mm");
+  const [paperType, setPaperType] = useState("");
+  const [paperGsm, setPaperGsm] = useState("");
+  const [colorType, setColorType] = useState("");
+  const [printSides, setPrintSides] = useState("");
+  const [printingMethod, setPrintingMethod] = useState("");
+  const [finishingOptions, setFinishingOptions] = useState("");
+  const [foldingType, setFoldingType] = useState("");
+  const [artworkFileName, setArtworkFileName] = useState("");
+  const [artworkFilePath, setArtworkFilePath] = useState("");
+  const [productionAdditionalNotes, setProductionAdditionalNotes] = useState("");
+  const [printDeadline, setPrintDeadline] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [priority, setPriority] = useState("Normal");
 
   const [saving, setSaving] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
@@ -867,6 +894,63 @@ export default function LeadsPage() {
     setShowRemarkModal(false);
     setRemarkLead(null);
     showSuccess("Remark updated");
+  };
+
+  const submitProductionRequirement = async () => {
+    try {
+      const payload = {
+        leadId: currentLeadId,
+        requirementType: "Production",
+        productType,
+        customProductType,
+        quantity: quantity ? parseInt(quantity) : null,
+        numPages: numPages ? parseInt(numPages) : null,
+        paperSize,
+        customSizeWidth: customSizeWidth ? parseFloat(customSizeWidth) : null,
+        customSizeHeight: customSizeHeight ? parseFloat(customSizeHeight) : null,
+        customSizeUnit,
+        paperType,
+        paperGsm,
+        colorType,
+        printSides,
+        printingMethod,
+        finishingOptions,
+        foldingType,
+        artworkFileName,
+        artworkFilePath,
+        additionalNotes: productionAdditionalNotes,
+        printDeadline,
+        deliveryDate,
+        priority,
+      };
+      await saveProductionRequirement(payload);
+      showSuccess("Production requirements saved successfully");
+      setShowProductionModal(false);
+      // Reset form
+      setProductType("");
+      setCustomProductType("");
+      setQuantity("");
+      setNumPages("");
+      setPaperSize("");
+      setCustomSizeWidth("");
+      setCustomSizeHeight("");
+      setCustomSizeUnit("mm");
+      setPaperType("");
+      setPaperGsm("");
+      setColorType("");
+      setPrintSides("");
+      setPrintingMethod("");
+      setFinishingOptions("");
+      setFoldingType("");
+      setArtworkFileName("");
+      setArtworkFilePath("");
+      setProductionAdditionalNotes("");
+      setPrintDeadline("");
+      setDeliveryDate("");
+      setPriority("Normal");
+    } catch (e) {
+      showError(extractApiErrorMessage(e, "Failed to save production requirements"));
+    }
   };
 
   const toggleLeadSelection = (leadId) => {
@@ -1708,6 +1792,54 @@ export default function LeadsPage() {
           <div className="modal-backdrop fade show" />
         </>
       )}
+
+      <ProductionModal
+        showProductionModal={showProductionModal}
+        setShowProductionModal={setShowProductionModal}
+        productType={productType}
+        setProductType={setProductType}
+        customProductType={customProductType}
+        setCustomProductType={setCustomProductType}
+        quantity={quantity}
+        setQuantity={setQuantity}
+        numPages={numPages}
+        setNumPages={setNumPages}
+        paperSize={paperSize}
+        setPaperSize={setPaperSize}
+        customSizeWidth={customSizeWidth}
+        setCustomSizeWidth={setCustomSizeWidth}
+        customSizeHeight={customSizeHeight}
+        setCustomSizeHeight={setCustomSizeHeight}
+        customSizeUnit={customSizeUnit}
+        setCustomSizeUnit={setCustomSizeUnit}
+        paperType={paperType}
+        setPaperType={setPaperType}
+        paperGsm={paperGsm}
+        setPaperGsm={setPaperGsm}
+        colorType={colorType}
+        setColorType={setColorType}
+        printSides={printSides}
+        setPrintSides={setPrintSides}
+        printingMethod={printingMethod}
+        setPrintingMethod={setPrintingMethod}
+        finishingOptions={finishingOptions}
+        setFinishingOptions={setFinishingOptions}
+        foldingType={foldingType}
+        setFoldingType={setFoldingType}
+        artworkFileName={artworkFileName}
+        setArtworkFileName={setArtworkFileName}
+        artworkFilePath={artworkFilePath}
+        setArtworkFilePath={setArtworkFilePath}
+        additionalNotes={productionAdditionalNotes}
+        setAdditionalNotes={setProductionAdditionalNotes}
+        printDeadline={printDeadline}
+        setPrintDeadline={setPrintDeadline}
+        deliveryDate={deliveryDate}
+        setDeliveryDate={setDeliveryDate}
+        priority={priority}
+        setPriority={setPriority}
+        onSubmit={submitProductionRequirement}
+      />
 
       {confirmDialog}
     </div>
