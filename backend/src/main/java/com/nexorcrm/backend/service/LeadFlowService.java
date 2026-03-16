@@ -5,15 +5,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexorcrm.backend.dto.LeadFlowRequest;
 import com.nexorcrm.backend.dto.LeadFlowResponse;
 import com.nexorcrm.backend.entity.LeadFlowConfig;
+import com.nexorcrm.backend.entity.LeadStatus;
 import com.nexorcrm.backend.repo.LeadFlowConfigRepository;
+import com.nexorcrm.backend.repo.LeadStatusRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class LeadFlowService {
@@ -21,13 +27,16 @@ public class LeadFlowService {
     private static final Long FLOW_ID = 1L;
 
     private final LeadFlowConfigRepository leadFlowConfigRepository;
+    private final LeadStatusRepository leadStatusRepository;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<LeadService> leadServiceProvider;
 
     public LeadFlowService(LeadFlowConfigRepository leadFlowConfigRepository,
+                           LeadStatusRepository leadStatusRepository,
                            ObjectMapper objectMapper,
                            ObjectProvider<LeadService> leadServiceProvider) {
         this.leadFlowConfigRepository = leadFlowConfigRepository;
+        this.leadStatusRepository = leadStatusRepository;
         this.objectMapper = objectMapper;
         this.leadServiceProvider = leadServiceProvider;
     }
@@ -56,6 +65,10 @@ public class LeadFlowService {
         }
         LeadFlowConfig saved = leadFlowConfigRepository.save(config);
 
+        // Ensure all statuses referenced by the flow configuration are available
+        // in the global lead status list (used by the lead editor / list UI).
+        syncStatusesFromFlowRules(request.getRules());
+
         // after updating the flow configuration we need to ensure any existing
         // leads that are currently sitting in a status whose handled-by group was
         // just changed get reassigned to a member of the new group.  this keeps
@@ -71,6 +84,50 @@ public class LeadFlowService {
         }
 
         return toResponse(saved);
+    }
+
+    private void syncStatusesFromFlowRules(List<Map<String, Object>> rules) {
+        if (rules == null) return;
+
+        Set<String> statuses = new HashSet<>();
+        for (Map<String, Object> rule : rules) {
+            if (rule == null) continue;
+            String status = String.valueOf(rule.get("status") != null ? rule.get("status") : "").trim();
+            if (!status.isEmpty()) {
+                statuses.add(status);
+            }
+            Object next = rule.get("next");
+            if (next instanceof Map<?, ?> nextMap) {
+                for (Object key : nextMap.keySet()) {
+                    String nextStatus = String.valueOf(key != null ? key : "").trim();
+                    if (nextStatus.isEmpty()) continue;
+                    statuses.add(nextStatus);
+                }
+            }
+        }
+
+        for (String status : statuses) {
+            if (leadStatusRepository.existsByStatusNameIgnoreCaseAndDeletedFalse(status)) {
+                continue;
+            }
+            Optional<LeadStatus> existing = leadStatusRepository.findByStatusNameIgnoreCase(status);
+            if (existing.isPresent()) {
+                LeadStatus row = existing.get();
+                if (row.isDeleted()) {
+                    row.setDeleted(false);
+                    leadStatusRepository.save(row);
+                }
+                continue;
+            }
+            LeadStatus row = new LeadStatus();
+            row.setStatusId(generateStatusId());
+            row.setStatusName(status);
+            leadStatusRepository.save(row);
+        }
+    }
+
+    private String generateStatusId() {
+        return "LDSTS_" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);
     }
 
     private String serializeRules(List<Map<String, Object>> rules) {

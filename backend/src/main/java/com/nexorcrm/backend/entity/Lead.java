@@ -171,6 +171,72 @@ public class Lead {
     @Column(name = "requirement_notes", columnDefinition = "LONGTEXT")
     private String requirementNotes;
 
+    // payment verification fields
+    @Column(name = "payment_proof_file_name", length = 200)
+    private String paymentProofFileName;
+
+    @Column(name = "payment_proof_file_path", length = 1000)
+    private String paymentProofFilePath;
+
+    @Column(name = "payment_proof_notes", columnDefinition = "LONGTEXT")
+    private String paymentProofNotes;
+
+    @Column(name = "payment_verification_status", length = 50)
+    private String paymentVerificationStatus;
+
+    @Column(name = "payment_verification_rejection_reason", columnDefinition = "LONGTEXT")
+    private String paymentVerificationRejectionReason;
+
+    // payment verification address IDs
+    @Column(name = "payment_verification_billing_address_id")
+    private Long paymentVerificationBillingAddressId;
+
+    @Column(name = "payment_verification_shipping_address_id")
+    private Long paymentVerificationShippingAddressId;
+    @Column(name = "payment_verification_assigned_to_user_id")
+    private Long paymentVerificationAssignedToUserId;
+
+    @Column(name = "payment_verification_amount", precision = 14, scale = 2)
+    private java.math.BigDecimal paymentVerificationAmount;
+
+    // payment details captured from payment verification
+    @Column(name = "payment_method", length = 100)
+    private String paymentMethod;
+
+    @Column(name = "transaction_id", length = 255)
+    private String transactionId;
+
+    @Column(name = "payment_date")
+    private LocalDateTime paymentDate;
+
+    @Column(name = "payment_notes", columnDefinition = "LONGTEXT")
+    private String paymentNotes;
+
+    @Column(name = "rejection_notes", columnDefinition = "LONGTEXT")
+    private String rejectionNotes;
+
+    @Column(name = "invoice_data", columnDefinition = "LONGTEXT")
+    private String invoiceData;
+
+    @Column(name = "payment_verified_invoice_data", columnDefinition = "LONGTEXT")
+    private String paymentVerifiedInvoiceData;
+
+    @Column(name = "invoice_cgst_percent", precision = 5, scale = 2)
+    private java.math.BigDecimal invoiceCgstPercent;
+
+    @Column(name = "invoice_sgst_percent", precision = 5, scale = 2)
+    private java.math.BigDecimal invoiceSgstPercent;
+
+    // budget verification fields
+    @Column(name = "budget_verification_status", length = 50)
+    private String budgetVerificationStatus;
+
+    @Column(name = "budget_verification_assigned_to_user_id")
+    private Long budgetVerificationAssignedToUserId;
+
+    @Column(name = "budget_verification_rejection_reason", columnDefinition = "LONGTEXT")
+    private String budgetVerificationRejectionReason;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
 
@@ -298,6 +364,68 @@ public class Lead {
 
     public String getRequirementNotes() { return requirementNotes; }
     public void setRequirementNotes(String requirementNotes) { this.requirementNotes = requirementNotes; }
+
+    public String getPaymentProofFileName() { return paymentProofFileName; }
+    public void setPaymentProofFileName(String paymentProofFileName) { this.paymentProofFileName = paymentProofFileName; }
+
+    public String getPaymentProofFilePath() { return paymentProofFilePath; }
+    public void setPaymentProofFilePath(String paymentProofFilePath) { this.paymentProofFilePath = paymentProofFilePath; }
+
+    public String getPaymentProofNotes() { return paymentProofNotes; }
+    public void setPaymentProofNotes(String paymentProofNotes) { this.paymentProofNotes = paymentProofNotes; }
+
+    public String getPaymentVerificationStatus() { return paymentVerificationStatus; }
+    public void setPaymentVerificationStatus(String paymentVerificationStatus) { this.paymentVerificationStatus = paymentVerificationStatus; }
+
+    public String getPaymentVerificationRejectionReason() { return paymentVerificationRejectionReason; }
+    public void setPaymentVerificationRejectionReason(String paymentVerificationRejectionReason) { this.paymentVerificationRejectionReason = paymentVerificationRejectionReason; }
+
+    public Long getPaymentVerificationBillingAddressId() { return paymentVerificationBillingAddressId; }
+    public void setPaymentVerificationBillingAddressId(Long paymentVerificationBillingAddressId) { this.paymentVerificationBillingAddressId = paymentVerificationBillingAddressId; }
+
+    public Long getPaymentVerificationShippingAddressId() { return paymentVerificationShippingAddressId; }
+    public void setPaymentVerificationShippingAddressId(Long paymentVerificationShippingAddressId) { this.paymentVerificationShippingAddressId = paymentVerificationShippingAddressId; }
+    public Long getPaymentVerificationAssignedToUserId() { return paymentVerificationAssignedToUserId; }
+    public void setPaymentVerificationAssignedToUserId(Long paymentVerificationAssignedToUserId) { this.paymentVerificationAssignedToUserId = paymentVerificationAssignedToUserId; }
+
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public String getTransactionId() { return transactionId; }
+    public void setTransactionId(String transactionId) { this.transactionId = transactionId; }
+
+    public LocalDateTime getPaymentDate() { return paymentDate; }
+    public void setPaymentDate(LocalDateTime paymentDate) { this.paymentDate = paymentDate; }
+
+    public String getPaymentNotes() { return paymentNotes; }
+    public void setPaymentNotes(String paymentNotes) { this.paymentNotes = paymentNotes; }
+
+    public String getRejectionNotes() { return rejectionNotes; }
+    public void setRejectionNotes(String rejectionNotes) { this.rejectionNotes = rejectionNotes; }
+
+    public String getInvoiceData() { return invoiceData; }
+    public void setInvoiceData(String invoiceData) { this.invoiceData = invoiceData; }
+
+    public String getPaymentVerifiedInvoiceData() { return paymentVerifiedInvoiceData; }
+    public void setPaymentVerifiedInvoiceData(String paymentVerifiedInvoiceData) { this.paymentVerifiedInvoiceData = paymentVerifiedInvoiceData; }
+
+    public java.math.BigDecimal getPaymentVerificationAmount() { return paymentVerificationAmount; }
+    public void setPaymentVerificationAmount(java.math.BigDecimal paymentVerificationAmount) { this.paymentVerificationAmount = paymentVerificationAmount; }
+
+    public java.math.BigDecimal getInvoiceCgstPercent() { return invoiceCgstPercent; }
+    public void setInvoiceCgstPercent(java.math.BigDecimal invoiceCgstPercent) { this.invoiceCgstPercent = invoiceCgstPercent; }
+
+    public java.math.BigDecimal getInvoiceSgstPercent() { return invoiceSgstPercent; }
+    public void setInvoiceSgstPercent(java.math.BigDecimal invoiceSgstPercent) { this.invoiceSgstPercent = invoiceSgstPercent; }
+
+    public String getBudgetVerificationStatus() { return budgetVerificationStatus; }
+    public void setBudgetVerificationStatus(String budgetVerificationStatus) { this.budgetVerificationStatus = budgetVerificationStatus; }
+
+    public Long getBudgetVerificationAssignedToUserId() { return budgetVerificationAssignedToUserId; }
+    public void setBudgetVerificationAssignedToUserId(Long budgetVerificationAssignedToUserId) { this.budgetVerificationAssignedToUserId = budgetVerificationAssignedToUserId; }
+
+    public String getBudgetVerificationRejectionReason() { return budgetVerificationRejectionReason; }
+    public void setBudgetVerificationRejectionReason(String budgetVerificationRejectionReason) { this.budgetVerificationRejectionReason = budgetVerificationRejectionReason; }
 
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }

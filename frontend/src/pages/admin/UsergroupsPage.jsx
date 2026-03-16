@@ -899,32 +899,62 @@ function UsergroupsPage() {
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Teams</label>
-                    <select
-                      className="form-select"
-                      multiple
-                      value={createScope.teamIds}
-                      onChange={(e) =>
-                        setCreateScope((prev) => ({
-                          ...prev,
-                          teamIds: Array.from(
-                            e.target.selectedOptions,
-                            (opt) => opt.value,
-                          ),
-                        }))
-                      }
-                      disabled={
-                        orgLoading ||
-                        !createScope.departmentId ||
-                        isManager
-                      }
-                      style={{ minHeight: 120 }}
-                    >
-                      {createTeams.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="d-flex gap-2">
+                      <select
+                        className="form-select"
+                        value=""
+                        onChange={(e) => {
+                          const teamId = e.target.value;
+                          if (teamId && !createScope.teamIds.includes(teamId)) {
+                            setCreateScope((prev) => ({
+                              ...prev,
+                              teamIds: [...prev.teamIds, teamId],
+                            }));
+                          }
+                          e.target.value = "";
+                        }}
+                        disabled={
+                          orgLoading ||
+                          !createScope.departmentId ||
+                          isManager
+                        }
+                      >
+                        <option value="">Select Team</option>
+                        {createTeams
+                          .filter((item) => !createScope.teamIds.includes(String(item.id)))
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    {createScope.teamIds.length > 0 && (
+                      <div className="mt-2 d-flex flex-wrap gap-2">
+                        {createScope.teamIds.map((teamId) => {
+                          const team = createTeams.find((t) => String(t.id) === String(teamId));
+                          return (
+                            <span
+                              key={teamId}
+                              className="badge bg-primary d-inline-flex align-items-center gap-2"
+                              style={{ fontSize: "0.875rem", padding: "0.5rem 0.75rem" }}
+                            >
+                              {team?.name || teamId}
+                              <i
+                                className="ti ti-x"
+                                style={{ cursor: "pointer" }}
+                                onClick={() =>
+                                  setCreateScope((prev) => ({
+                                    ...prev,
+                                    teamIds: prev.teamIds.filter((id) => id !== teamId),
+                                  }))
+                                }
+                              ></i>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     {isManager && (
                       <small className="text-muted d-block mt-1">
                         Manager can only create groups for their own team.

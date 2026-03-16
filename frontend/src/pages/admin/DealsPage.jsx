@@ -1,12 +1,109 @@
-import React from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import DealsGridPage from "./DealsGridPage";
+import { getDeals, deleteDeal } from "../../api/dealsApi";
+import { extractApiErrorMessage } from "../../utils/errorMessage";
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+  } catch {
+    return String(value);
+  }
+}
+
+function EditGlyph({ size = 14, className = "" }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  );
+}
+
+function PhoneGlyph({ size = 14, className = "" }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.1 5.18 2 2 0 0 1 5.08 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.6a2 2 0 0 1-.45 2.11L9.1 10.6a16 16 0 0 0 4.3 4.3l1.17-1.15a2 2 0 0 1 2.11-.45c.83.29 1.7.5 2.6.62A2 2 0 0 1 22 16.92z" />
+    </svg>
+  );
+}
+
+function NoteGlyph({ size = 14, className = "" }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
+  );
+}
 
 const DealsPage = () => {
 	const location = useLocation();
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const viewFromQuery = searchParams.get("view") === "grid" ? "grid" : "list";
 	const view = location.pathname.endsWith("/deals-grid") ? "grid" : viewFromQuery;
+
+	const [deals, setDeals] = useState([]);
+	const [filteredDeals, setFilteredDeals] = useState([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(null);
+	const [searchText, setSearchText] = useState("");
+	const [selectedDealId, setSelectedDealId] = useState(null);
+
+	// Load deals from backend
+	useEffect(() => {
+		loadDeals();
+	}, []);
+
+	// Filter deals based on search text
+	useEffect(() => {
+		if (searchText.trim() === "") {
+			setFilteredDeals(deals);
+		} else {
+			const searchLower = searchText.toLowerCase();
+			const filtered = deals.filter(deal => {
+				return (
+					(deal?.name || "").toLowerCase().includes(searchLower) ||
+					(deal?.mobile || "").toLowerCase().includes(searchLower) ||
+					String(deal?.id || "").toLowerCase().includes(searchLower) ||
+					(deal?.primarySource || "").toLowerCase().includes(searchLower) ||
+					(deal?.secondarySource || "").toLowerCase().includes(searchLower) ||
+					(deal?.projectName || "").toLowerCase().includes(searchLower) ||
+					(deal?.owner || "").toLowerCase().includes(searchLower)
+				);
+			});
+			setFilteredDeals(filtered);
+		}
+	}, [searchText, deals]);
+
+	const loadDeals = async () => {
+		setLoading(true);
+		try {
+			const dealsList = await getDeals();
+			setDeals(dealsList || []);
+			setError(null);
+		} catch (e) {
+			setError(extractApiErrorMessage(e, "Failed to load deals"));
+			setDeals([]);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleDeleteDeal = async (dealId) => {
+		if (!dealId) return;
+		try {
+			await deleteDeal(dealId);
+			setDeals(deals.filter(d => d.id !== dealId));
+			setSelectedDealId(null);
+		} catch (e) {
+			setError(extractApiErrorMessage(e, "Failed to delete deal"));
+		}
+	};
 
 	if (view === "grid") {
 		return <DealsGridPage />;
@@ -63,347 +160,142 @@ const DealsPage = () => {
 					</div>
 				</div>
 				
+				{error && (
+					<div className="alert alert-danger alert-dismissible fade show" role="alert">
+						{error}
+						<button type="button" className="btn-close" onClick={() => setError(null)}></button>
+					</div>
+				)}
+				
 				<div className="card">
 					<div className="card-header d-flex align-items-center justify-content-between flex-wrap row-gap-3">
 						<h5>Deal List</h5>
-						<div className="d-flex my-xl-auto right-content align-items-center flex-wrap row-gap-3"></div>
+						<div className="d-flex my-xl-auto right-content align-items-center flex-wrap row-gap-3">
+							<input
+								type="text"
+								placeholder="Search by name, ID, company, or owner..."
+								className="form-control form-control-sm"
+								value={searchText}
+								onChange={(e) => setSearchText(e.target.value)}
+								style={{ width: "300px" }}
+							/>
+						</div>
 					</div>
 					<div className="card-body p-0">
-						<div className="custom-datatable-filter table-responsive">
-							<table className="table datatable">
-								<thead className="thead-light">
+						{loading ? (
+							<div className="text-center p-4">
+								<p>Loading deals...</p>
+							</div>
+						) : filteredDeals.length === 0 ? (
+							<div className="text-center p-4">
+								<p>No deals found</p>
+							</div>
+						) : (
+						<div className="table-responsive">
+							<table className="table table-hover align-middle">
+								<thead>
 									<tr>
-										<th className="no-sort">
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" id="select-all" />
-											</div>
+										<th style={{ width: 36 }}>
+											<input type="checkbox" />
 										</th>
-										<th>Deal Name</th>
-										<th>Stage</th>
-										<th>Deal Value</th>
-										<th>Tags</th>
-										<th>Expected Closed Date</th>
+										<th className="text-nowrap">
+											#
+											<span className="ms-1 text-muted d-inline-flex align-items-center">
+												<EditGlyph size={12} />
+											</span>
+										</th>
+										<th>Name</th>
+										<th>Mobile</th>
+										<th>Primary</th>
+										<th>Secondary</th>
+										<th>Projects</th>
+										<th className="text-nowrap">
+											Status
+											<span className="ms-1 d-inline-flex align-items-center" style={{ color: "#6f65d6" }}>
+												<EditGlyph size={12} />
+											</span>
+										</th>
+										<th>Remarks</th>
 										<th>Owner</th>
-										<th>Probability</th>
-										<th>Status</th>
-										<th></th>
+										<th>Created Date</th>
 									</tr>
 								</thead>
 								<tbody>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Collins</a></h6>
-										</td>
-										<td>Quality To Buy</td>
-										<td>$4,50,000</td>
-										<td>
-											<span className="badge badge-info-transparent">Promotion</span>
-										</td>
-										<td>14 Jan 2024</td>
-										<td>Hendry</td>
-										<td>
-											70%
-										</td>
-										<td>
-											<span className="badge badge-info d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Open
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Konopelski</a></h6>
-										</td>
-										<td>Proposal Made</td>
-										<td>$3,15,000</td>
-										<td>
-											<span className="badge badge-warning-transparent">Rated</span>
-										</td>
-										<td>21 Jan 2024</td>
-										<td>Guilory</td>
-										<td>
-											85%
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Won
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Adams</a></h6>
-										</td>
-										<td>Contact Made</td>
-										<td>$8,40,000</td>
-										<td>
-											<span className="badge badge-info-transparent">Promotion</span>
-										</td>
-										<td>20 Feb 2024</td>
-										<td>Jami</td>
-										<td>
-											60%
-										</td>
-										<td>
-											<span className="badge badge-info d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Open
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Schumm</a></h6>
-										</td>
-										<td>Quality To Buy</td>
-										<td>$6,10,000</td>
-										<td>
-											<span className="badge badge-pink-transparent">Collab</span>
-										</td>
-										<td>15 Mar 2024</td>
-										<td>Theresa</td>
-										<td>
-											75%
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Won
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Wisozk</a></h6>
-										</td>
-										<td>Presentation</td>
-										<td>$4,70,000</td>
-										<td>
-											<span className="badge badge-danger-transparent">Rejected</span>
-										</td>
-										<td>12 Apr 2024</td>
-										<td>Smith</td>
-										<td>
-											80%
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Won
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Heller</a></h6>
-										</td>
-										<td>Appointment</td>
-										<td>$5,50,000</td>
-										<td>
-											<span className="badge badge-warning-transparent">Rated</span>
-										</td>
-										<td>20 Apr 2024</td>
-										<td>Martin</td>
-										<td>
-											65%
-										</td>
-										<td>
-											<span className="badge badge-danger d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Lost
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Gutkowski</a></h6>
-										</td>
-										<td>Qualify to Buy</td>
-										<td>$5,00,000</td>
-										<td>
-											<span className="badge badge-purple-transparent">Calls</span>
-										</td>
-										<td>06 Jul 2024</td>
-										<td>Newell</td>
-										<td>
-											90%
-										</td>
-										<td>
-											<span className="badge badge-danger d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Lost
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Walter</a></h6>
-										</td>
-										<td>Proposal Made</td>
-										<td>$4,50,000</td>
-										<td>
-											<span className="badge badge-danger-transparent">Rejected</span>
-										</td>
-										<td>02 Sep 2024</td>
-										<td>Janet</td>
-										<td>
-											55%
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Won
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Hansen</a></h6>
-										</td>
-										<td>Presentation</td>
-										<td>$6,20,000</td>
-										<td>
-											<span className="badge badge-pink-transparent">Collab</span>
-										</td>
-										<td>15 Nov 2024</td>
-										<td>Craig</td>
-										<td>
-											95%
-										</td>
-										<td>
-											<span className="badge badge-danger d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Lost
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<div className="form-check form-check-md">
-												<input className="form-check-input" type="checkbox" />
-											</div>
-										</td>
-										<td>
-											<h6 className="fw-medium fs-14"><a href="deals-details.php">Leuschke</a></h6>
-										</td>
-										<td>Appointment</td>
-										<td>$7,40,000</td>
-										<td>
-											<span className="badge badge-purple-transparent">Calls</span>
-										</td>
-										<td>10 Dec 2024</td>
-										<td>Daniel</td>
-										<td>
-											50%
-										</td>
-										<td>
-											<span className="badge badge-success d-inline-flex align-items-center badge-xs">
-												<i className="ti ti-point-filled me-1"></i>Won
-											</span>
-										</td>
-										<td>
-											<div className="action-icon d-inline-flex">
-												<a href="#" className="me-2" data-bs-toggle="modal" data-bs-target="#edit_deals"><i className="ti ti-edit"></i></a>
-												<a href="#" data-bs-toggle="modal" data-bs-target="#delete_modal"><i className="ti ti-trash"></i></a>
-											</div>
-										</td>
-									</tr>
-
+									{filteredDeals.map((deal, index) => (
+										<tr key={deal.id}>
+											<td>
+												<input type="checkbox" />
+											</td>
+											<td>
+												<div className="d-inline-flex align-items-center gap-2">
+													<span>{index + 1}</span>
+													<button
+														className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+														style={{ backgroundColor: "#6f65d6", color: "#fff", width: 24, height: 24, padding: 0, borderRadius: 4, border: "none" }}
+													onClick={() => navigate(`/deal/${deal.id}`)}
+														title="Edit Deal"
+													>
+														<EditGlyph size={11} />
+													</button>
+													<button
+														className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+														style={{ backgroundColor: "#e74c3c", color: "#fff", width: 24, height: 24, padding: 0, borderRadius: 4, border: "none" }}
+														onClick={() => {
+															setSelectedDealId(deal.id);
+															const deleteModal = new window.bootstrap.Modal(document.getElementById("delete_modal"));
+															deleteModal.show();
+														}}
+														title="Delete Deal"
+													>
+														<i className="ti ti-trash" />
+													</button>
+												</div>
+											</td>
+											<td>{deal.name || "-"}</td>
+											<td>
+												<div className="d-flex align-items-center gap-2">
+													<span>{deal.mobile || "-"}</span>
+													{deal.mobile && (
+														<a className="btn btn-sm btn-outline-secondary" href={`tel:${deal.mobile}`}>
+															<PhoneGlyph size={12} />
+														</a>
+													)}
+												</div>
+											</td>
+											<td>{deal.primarySource || "-"}</td>
+											<td>{deal.secondarySource || "-"}</td>
+											<td>{deal.projectName || "-"}</td>
+											<td>
+												<div className="d-inline-flex align-items-center gap-2">
+													<span>{deal.status || "-"}</span>
+													<button
+														className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+														style={{ backgroundColor: "#6f65d6", color: "#fff", width: 24, height: 24, padding: 0, borderRadius: 4, border: "none" }}
+														onClick={() => navigate(`/deal/${deal.id}`)}
+														title="Edit Deal"
+													>
+														<EditGlyph size={11} />
+													</button>
+												</div>
+											</td>
+											<td>
+												<button
+													className="btn btn-sm d-inline-flex align-items-center justify-content-center"
+													style={{ backgroundColor: "#6f65d6", color: "#fff", width: 24, height: 24, padding: 0, borderRadius: 4, border: "none" }}
+													onClick={() => navigate(`/deal/${deal.id}`)}
+													title="View / Edit Deal"
+												>
+													<NoteGlyph size={11} />
+												</button>
+											</td>
+											<td>{deal.owner || "-"}</td>
+											<td>{formatDateTime(deal.createdAt)}</td>
+										</tr>
+									))}
 								</tbody>
 							</table>
 						</div>
+						)}
 					</div>
 				</div>
 				
@@ -413,6 +305,45 @@ const DealsPage = () => {
 			<div className="footer d-sm-flex align-items-center justify-content-between border-top bg-white p-3">
 				<p className="mb-0">2014 - 2025 &copy; SmartHR.</p>
 				<p>Designed &amp; Developed By <a href="javascript:void(0);" className="text-primary">Dreams</a></p>
+			</div>
+
+			<div className="modal fade" id="delete_modal" tabIndex="-1">
+				<div className="modal-dialog modal-dialog-centered">
+					<div className="modal-content">
+						<div className="modal-body text-center">
+							<span className="avatar avatar-xl bg-danger-transparent rounded-circle mb-3">
+								<i className="ti ti-trash-x fs-24"></i>
+							</span>
+							<h4 className="mb-2">Delete Deal</h4>
+							<p className="mb-3">Are you sure you want to delete this deal?</p>
+							<div className="d-flex">
+								<button
+									type="button"
+									className="btn btn-light me-2 flex-fill"
+									data-bs-dismiss="modal"
+									onClick={() => setSelectedDealId(null)}
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									className="btn btn-danger flex-fill"
+									onClick={() => {
+										if (selectedDealId) {
+											handleDeleteDeal(selectedDealId);
+											const deleteModal = window.bootstrap.Modal.getInstance(
+												document.getElementById("delete_modal")
+											);
+											deleteModal?.hide();
+										}
+									}}
+								>
+									Delete
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
 
 		

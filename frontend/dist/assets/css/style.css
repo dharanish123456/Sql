@@ -347,8 +347,8 @@ ul .btn-primary:not(:disabled):not(.disabled):active:focus, ul .btn-primary:not(
 }
 
 .bg-success {
-  background-color: #03C95A !important;
-  border: 1px solid #03C95A !important;
+  background-color: #f8f9fa !important;
+  border: 1px solid #f26522!important;
   color: #000;
 }
 
@@ -2255,7 +2255,7 @@ button:focus {
   border-color: #ffc107 !important;
 }
 .border.border-danger {
-  border: 1px solid #E70D0D !important;
+  border: 1px solid #fff !important;
   opacity: 1;
 }
 .border.border-danger.border-opacity-10 {
@@ -6609,11 +6609,11 @@ h6,
 }
 
 .text-white {
-  color: #FFF !important;
+  color: #242424 !important;
 }
 
 .text-fixed-white {
-  color: #FFF !important;
+  color: #000000 !important;
 }
 
 .text-fixed-black {

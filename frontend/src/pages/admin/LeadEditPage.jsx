@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   getLeadById,
   updateLeadRowStatus,
@@ -11,13 +13,16 @@ import {
   getLeadChatMessages,
   sendLeadChatAttachment,
   downloadLeadChatAttachment,
+  uploadLeadPaymentProof,
 } from "../../api/leadsApi";
+import { getAddressesbyLeadId, createAddress, getAddressesByLeadIdAndType } from "../../api/addressApi";
 import { createStockRequest, getStockItems } from "../../api/stocksApi";
 import { getLeadFlow } from "../../api/flowApi";
 import { getLeadStatuses, DEFAULT_LEAD_STATUSES } from "../../api/leadStatusApi";
 import { getLeadTypes } from "../../api/leadTypeApi";
 import { COUNTRY_CODES } from "../../constants/countryCodes";
 import { extractApiErrorMessage } from "../../utils/errorMessage";
+import { COUNTRY_CODE_OPTIONS, getCountryAllowedLengths, getCountryOptionByValue, sanitizePhoneDigits, validatePhoneNumber } from "../../utils/phoneUtils";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../components/system/ToastProvider";
 import StockRequestFormModal from "../../components/system/StockRequestFormModal";
@@ -79,8 +84,9 @@ function normalizeCountryCode(value) {
 
 const DEFAULT_CUSTOMER_LOGIN_PASSWORD = "Customer@123";
 
-export default function LeadEditPage() {
-  const { id } = useParams();
+export default function LeadEditPage({ leadIdOverride } = {}) {
+  const params = useParams();
+  const id = leadIdOverride || params.id;
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -118,7 +124,6 @@ export default function LeadEditPage() {
   const [allocateGroupName, setAllocateGroupName] = useState("");
   const [autoStatusHandled, setAutoStatusHandled] = useState(false);
   const [showDesignDurationModal, setShowDesignDurationModal] = useState(false);
-  const [showMoneyModal, setShowMoneyModal] = useState(false);
   const [designMessages, setDesignMessages] = useState([]);
   const [showStockRequestModal, setShowStockRequestModal] = useState(false);
   const [stockRequestSubmitting, setStockRequestSubmitting] = useState(false);
@@ -133,6 +138,36 @@ export default function LeadEditPage() {
   const [requirementFileName, setRequirementFileName] = useState("");
   const [requirementNotes, setRequirementNotes] = useState("");
   const [requirementSaving, setRequirementSaving] = useState(false);
+
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyPaidAmount, setVerifyPaidAmount] = useState("");
+  const [verifyNotes, setVerifyNotes] = useState("");
+  const [verifyFile, setVerifyFile] = useState(null);
+  const [verifyFileName, setVerifyFileName] = useState("");
+  
+  // Address-related state for payment verification
+  const [billingAddresses, setBillingAddresses] = useState([]);
+  const [shippingAddresses, setShippingAddresses] = useState([]);
+  const [selectedBillingAddressId, setSelectedBillingAddressId] = useState(null);
+  const [selectedShippingAddressId, setSelectedShippingAddressId] = useState(null);
+  const [shipSame, setShipSame] = useState(false);
+  const [showAddAddressModal, setShowAddAddressModal] = useState(false);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [newAddressType, setNewAddressType] = useState("BILLING");
+  const [newAddressContactName, setNewAddressContactName] = useState("");
+  const [newAddressCompanyName, setNewAddressCompanyName] = useState("");
+  const [newAddressGstin, setNewAddressGstin] = useState("");
+  const [newAddressCountryCode, setNewAddressCountryCode] = useState("+91");
+  const [newAddressPhone, setNewAddressPhone] = useState("");
+  const [newAddressPhoneError, setNewAddressPhoneError] = useState("");
+  const [newAddressEmail, setNewAddressEmail] = useState("");
+  const [newAddressLine1, setNewAddressLine1] = useState("");
+  const [newAddressLine2, setNewAddressLine2] = useState("");
+  const [newAddressCity, setNewAddressCity] = useState("");
+  const [newAddressState, setNewAddressState] = useState("");
+  const [newAddressPincode, setNewAddressPincode] = useState("");
+  const [newAddressCountry, setNewAddressCountry] = useState("India");
+  const [newAddressPrimary, setNewAddressPrimary] = useState(false);
 
   const DESIGN_THREAD_MARKER = "[[design-thread]]";
   function hasDesignThreadMarker(value) {
@@ -284,11 +319,17 @@ export default function LeadEditPage() {
         setRejectedReasonSubtype(
           pickText(leadData, ["rejectedReasonSubtype", "rejected_reason_subtype"]) || "",
         );
-        setPaidAmount(
-          pickText(leadData, ["paidAmount", "paid_amount"]) || "0",
+        setTotalAmount(
+          pickText(leadData, ["totalAmount", "total_amount"]) || "",
         );
+        const loadedTotal = pickText(leadData, ["totalAmount", "total_amount"]) || "";
+        const loadedPaid = pickText(leadData, ["paidAmount", "paid_amount"]) || "0";
+        const loadedRemaining = pickText(leadData, ["remainingAmount", "remaining_amount"]);
+
+        setTotalAmount(loadedTotal);
+        setPaidAmount(loadedPaid);
         setRemainingAmount(
-          pickText(leadData, ["remainingAmount", "remaining_amount"]) || "",
+          loadedRemaining || String(Math.max(0, Number(loadedTotal || 0) - Number(loadedPaid || 0))),
         );
         // design timing fields may be added during payment chat
         setDesignStartAt(
@@ -309,6 +350,24 @@ export default function LeadEditPage() {
     return () => {
       isMounted = false;
     };
+  }, [id]);
+
+  // Auto-refresh lead + invoice when the browser tab regains focus (e.g. after admin approves on another page).
+  // Throttled to once per 10 seconds to avoid excessive API calls.
+  useEffect(() => {
+    if (!id) return;
+    let lastFetch = 0;
+    const handleFocus = async () => {
+      const now = Date.now();
+      if (now - lastFetch < 10000) return;
+      lastFetch = now;
+      try {
+        const fresh = await getLeadById(id);
+        if (fresh) setLead(prev => ({ ...(prev || {}), ...fresh }));
+      } catch { /* silent */ }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
   }, [id]);
 
 
@@ -333,6 +392,35 @@ export default function LeadEditPage() {
     setAutoStatusHandled(true);
   }, [lead?.id, location.search, autoStatusHandled]);
 
+  // Fetch addresses whenverify modal opens
+  useEffect(() => {
+    if (!showVerifyModal || !lead?.id || addressLoading) return;
+    
+    const fetchAddresses = async () => {
+      setAddressLoading(true);
+      try {
+        const billingList = await getAddressesByLeadIdAndType(lead.id, "BILLING");
+        const shippingList = await getAddressesByLeadIdAndType(lead.id, "SHIPPING");
+        setBillingAddresses(billingList || []);
+        setShippingAddresses(shippingList || []);
+        
+        // Auto-select primary billing address
+        const primaryBilling = billingList?.find(a => a.isPrimary);
+        if (primaryBilling) {
+          setSelectedBillingAddressId(primaryBilling.id);
+        } else if (billingList?.length > 0) {
+          setSelectedBillingAddressId(billingList[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to fetch addresses:", e);
+      } finally {
+        setAddressLoading(false);
+      }
+    };
+    
+    fetchAddresses();
+  }, [showVerifyModal, lead?.id]);
+
   const effectiveStatus = String(lead?.status || "").trim();
   const statusLower = effectiveStatus.toLowerCase();
 
@@ -340,7 +428,15 @@ export default function LeadEditPage() {
   // include the new "requirement" stage so that when a lead is in
   // requirement status all earlier tabs (attempted/interested/etc.) keep
   // appearing.  the stage order reflects progression through the flow.
-  const leadStageOrder = ["attempted", "interested", "requirement", "design", "payment", "production"];
+  const leadStageOrder = [
+    "new lead",
+    "attempted",
+    "interested",
+    "requirement",
+    "design",
+    "payment",
+    "production",
+  ];
   const currentStageIndex = leadStageOrder.indexOf(statusLower);
   const hasReachedStage = (stage) => {
     const targetIndex = leadStageOrder.indexOf(String(stage || "").toLowerCase());
@@ -360,7 +456,13 @@ export default function LeadEditPage() {
       case "rejected":
         return !lead.rejectedReason;
       case "requirement":
-        return true;
+      case "budget":
+        // Only show requirement modal when requirement details are missing.
+        return !(
+          (lead.requirementType && String(lead.requirementType).trim()) ||
+          (lead.requirementNotes && String(lead.requirementNotes).trim()) ||
+          (lead.requirementFileName && String(lead.requirementFileName).trim())
+        );
       case "design":
         return !lead.designStartAt || !lead.designEndAt;
       default:
@@ -376,6 +478,7 @@ export default function LeadEditPage() {
   const isDesign = statusLower === "design";
   const isPayment = statusLower === "payment";
   const isProduction = statusLower === "production";
+  const isConverted = statusLower === "deal";
   const isEmployeeDesignView = role === "EMPLOYEE" && statusLower === "design";
   const lockAfterAttempted = hasReachedStage("interested") || isRejected;
   const hasAttemptedData = Boolean(
@@ -399,9 +502,142 @@ export default function LeadEditPage() {
 
   const showAttemptedSummary = hasAttemptedData || isAttempted;
   const showInterestedSummary = hasInterestedData || isInterested;
-  const showRequirementSummary = hasRequirementData || statusLower === "requirement";
+  const showRequirementSummary = hasRequirementData || statusLower === "requirement" || statusLower === "budget";
   const showDesignSummary = hasDesignData || isDesign;
-  const showPaymentSummary = hasPaymentData || isPayment || isProduction;
+  const showPaymentSummary =
+    hasPaymentData ||
+    isPayment ||
+    isProduction ||
+    role === "EMPLOYEE" ||
+    statusLower === "budget";
+
+  const parsedInvoice = (() => {
+    if (!lead?.invoiceData) return null;
+    try { return JSON.parse(lead.invoiceData); } catch { return null; }
+  })();
+
+  const parsedVerifiedInvoice = (() => {
+    if (!lead?.paymentVerifiedInvoiceData) return null;
+    try { return JSON.parse(lead.paymentVerifiedInvoiceData); } catch { return null; }
+  })();
+
+  const handleDownloadVerifiedInvoice = () => {
+    if (!parsedVerifiedInvoice) return;
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageMargin = 10;
+      const invoiceNumber = `INV-${lead.leadId || lead.id}`;
+      doc.setFontSize(18);
+      doc.text("INVOICE", pageMargin, 15);
+      doc.setFontSize(10);
+      doc.text("SVL Printing and Packaging", pageMargin, 25);
+      doc.text("GSTIN: 07AABCS1234H1Z0", pageMargin, 30);
+      doc.text("103-A, Industrial Complex, SVL Business Park", pageMargin, 35);
+      doc.text("Bangalore, Karnataka, 560001, India", pageMargin, 40);
+      doc.setFontSize(9);
+      doc.text(`Invoice #: ${invoiceNumber}`, pageWidth - pageMargin - 60, 25);
+      doc.text(`Date: ${parsedVerifiedInvoice.createdAt ? new Date(parsedVerifiedInvoice.createdAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN")}`, pageWidth - pageMargin - 60, 30);
+      doc.text(`Lead: ${lead.name}`, pageWidth - pageMargin - 60, 35);
+      const itemsWithTotals = (parsedVerifiedInvoice.items || []).map(item => ({
+        ...item,
+        subtotal: item.subtotal ?? (Number(item.quantity) * Number(item.unitPrice)),
+      }));
+      autoTable(doc, {
+        startY: 55,
+        head: [["#", "Description", "HSN", "Qty", "Unit Price", "Amount"]],
+        body: itemsWithTotals.map((item, idx) => [
+          String(idx + 1),
+          item.description,
+          item.hsn || "",
+          Number(item.quantity).toFixed(2),
+          Number(item.unitPrice).toFixed(2),
+          Number(item.subtotal).toFixed(2),
+        ]),
+        margin: { left: pageMargin, right: pageMargin },
+        styles: { fontSize: 7.8, cellPadding: 1.5 },
+        headStyles: { fillColor: [41, 128, 185] },
+        columnStyles: { 0: { halign: "center", cellWidth: 10 }, 3: { halign: "right", cellWidth: 18 }, 4: { halign: "right", cellWidth: 28 }, 5: { halign: "right", cellWidth: 28 } },
+      });
+      const t = parsedVerifiedInvoice.totals || {};
+      const finalY = (doc.lastAutoTable?.finalY || 55) + 5;
+      const sx = pageWidth - 72;
+      const sv = pageWidth - pageMargin;
+      const gap = 4.2;
+      doc.setFontSize(8.5);
+      doc.text("Subtotal:", sx, finalY);
+      doc.text(`Rs ${Number(t.subtotal || 0).toFixed(2)}`, sv, finalY, { align: "right" });
+      doc.text(`CGST (${Number(t.cgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap);
+      doc.text(`Rs ${Number(t.cgst || 0).toFixed(2)}`, sv, finalY + gap, { align: "right" });
+      doc.text(`SGST (${Number(t.sgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap * 2);
+      doc.text(`Rs ${Number(t.sgst || 0).toFixed(2)}`, sv, finalY + gap * 2, { align: "right" });
+      doc.setFontSize(9);
+      doc.text("Grand Total:", sx, finalY + gap * 3);
+      doc.text(`Rs ${Number(t.grandTotal || 0).toFixed(2)}`, sv, finalY + gap * 3, { align: "right" });
+      doc.save(`Payment-Verified-Invoice-${invoiceNumber}.pdf`);
+    } catch (err) {
+      console.error("Failed to generate verified invoice PDF:", err);
+    }
+  };
+
+  const handleDownloadInvoice = () => {
+    if (!parsedInvoice) return;
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageMargin = 10;
+      const invoiceNumber = `INV-${lead.leadId || lead.id}`;
+      doc.setFontSize(18);
+      doc.text("INVOICE", pageMargin, 15);
+      doc.setFontSize(10);
+      doc.text("SVL Printing and Packaging", pageMargin, 25);
+      doc.text("GSTIN: 07AABCS1234H1Z0", pageMargin, 30);
+      doc.text("103-A, Industrial Complex, SVL Business Park", pageMargin, 35);
+      doc.text("Bangalore, Karnataka, 560001, India", pageMargin, 40);
+      doc.setFontSize(9);
+      doc.text(`Invoice #: ${invoiceNumber}`, pageWidth - pageMargin - 60, 25);
+      doc.text(`Date: ${parsedInvoice.createdAt ? new Date(parsedInvoice.createdAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN")}`, pageWidth - pageMargin - 60, 30);
+      doc.text(`Lead: ${lead.name}`, pageWidth - pageMargin - 60, 35);
+      const itemsWithTotals = (parsedInvoice.items || []).map(item => ({
+        ...item,
+        subtotal: item.subtotal ?? (Number(item.quantity) * Number(item.unitPrice)),
+      }));
+      autoTable(doc, {
+        startY: 55,
+        head: [["#", "Description", "HSN", "Qty", "Unit Price", "Amount"]],
+        body: itemsWithTotals.map((item, idx) => [
+          String(idx + 1),
+          item.description,
+          item.hsn || "",
+          Number(item.quantity).toFixed(2),
+          Number(item.unitPrice).toFixed(2),
+          Number(item.subtotal).toFixed(2),
+        ]),
+        margin: { left: pageMargin, right: pageMargin },
+        styles: { fontSize: 7.8, cellPadding: 1.5 },
+        headStyles: { fillColor: [41, 128, 185] },
+        columnStyles: { 0: { halign: "center", cellWidth: 10 }, 3: { halign: "right", cellWidth: 18 }, 4: { halign: "right", cellWidth: 28 }, 5: { halign: "right", cellWidth: 28 } },
+      });
+      const t = parsedInvoice.totals || {};
+      const finalY = (doc.lastAutoTable?.finalY || 55) + 5;
+      const sx = pageWidth - 72;
+      const sv = pageWidth - pageMargin;
+      const gap = 4.2;
+      doc.setFontSize(8.5);
+      doc.text("Subtotal:", sx, finalY);
+      doc.text(`Rs ${Number(t.subtotal || 0).toFixed(2)}`, sv, finalY, { align: "right" });
+      doc.text(`CGST (${Number(t.cgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap);
+      doc.text(`Rs ${Number(t.cgst || 0).toFixed(2)}`, sv, finalY + gap, { align: "right" });
+      doc.text(`SGST (${Number(t.sgstPercent || 0).toFixed(2)}%):`, sx, finalY + gap * 2);
+      doc.text(`Rs ${Number(t.sgst || 0).toFixed(2)}`, sv, finalY + gap * 2, { align: "right" });
+      doc.setFontSize(9);
+      doc.text("Grand Total:", sx, finalY + gap * 3);
+      doc.text(`Rs ${Number(t.grandTotal || 0).toFixed(2)}`, sv, finalY + gap * 3, { align: "right" });
+      doc.save(`Invoice-${invoiceNumber}.pdf`);
+    } catch (err) {
+      console.error("Failed to generate invoice PDF:", err);
+    }
+  };
 
   // Set active tab based on current lead status
   useEffect(() => {
@@ -417,6 +653,8 @@ export default function LeadEditPage() {
       tabToActivate = "design";
     } else if (statusLower === "payment" || statusLower === "production") {
       tabToActivate = "payment";
+    } else if (statusLower === "budget") {
+      tabToActivate = "budget";
     } else if (statusLower === "requirement") {
       tabToActivate = "requirement";
     } else if (statusLower === "rejected") {
@@ -552,16 +790,44 @@ export default function LeadEditPage() {
     };
   }, [showAllocateModal, lead?.id]);
 
+  const flowStatuses = Array.isArray(flowRules)
+    ? flowRules
+        .flatMap((rule) => {
+          const base = String(rule?.status || "").trim();
+          const next =
+            rule?.next && typeof rule.next === "object"
+              ? Object.keys(rule.next).map((k) => String(k || "").trim())
+              : [];
+          return [base, ...next];
+        })
+        .filter(Boolean)
+    : [];
+
   const orderedLeadStatuses = [
     ...DEFAULT_LEAD_STATUSES,
     ...leadStatuses,
-  ].map((item) => String(item || "").trim()).filter(Boolean).filter((item, index, arr) => arr.indexOf(item) === index);
+    ...flowStatuses,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.indexOf(item) === index);
 
-  // build timeline based on available statuses and any transitions configured in the flow
+  // build timeline based on the user's actual progression (not just the full flow list)
   const timelineStatuses = (() => {
-    // start with the ordered list of known lead statuses (defaults + custom from API)
-    const base = orderedLeadStatuses.slice();
-    // additionally include any statuses that appear in the flow rules as next choices
+    const base = leadStageOrder.filter((stage) => {
+      // always show the initial "New Lead" stage
+      if (stage === "new lead") return true;
+      // only show stages that have been reached or have data filled
+      if (stage === "attempted") return showAttemptedSummary || isAttempted;
+      if (stage === "interested") return showInterestedSummary || isInterested;
+      if (stage === "requirement") return showRequirementSummary || statusLower === "requirement";
+      if (stage === "design") return showDesignSummary || isDesign;
+      if (stage === "payment") return showPaymentSummary || isPayment || isProduction;
+      if (stage === "production") return isProduction;
+      return true;
+    });
+
+    // Include any additional statuses referenced in flow rules (e.g., custom statuses)
     if (Array.isArray(flowRules)) {
       flowRules.forEach((rule) => {
         if (rule && rule.next && typeof rule.next === "object") {
@@ -573,6 +839,7 @@ export default function LeadEditPage() {
         }
       });
     }
+
     return base;
   })();
 
@@ -585,37 +852,37 @@ export default function LeadEditPage() {
     if (!current) {
       return orderedLeadStatuses;
     }
+    
+    // Find the flow rule for the current status
     const rule = Array.isArray(flowRules)
       ? flowRules.find(
           (r) =>
             String(r?.status || "").trim().toLowerCase() === current,
         )
       : null;
-    const nextKeys = rule?.next ? Object.keys(rule.next) : [];
+    
+    // Rule exists — only show explicitly configured next statuses
     if (rule) {
-      if (!nextKeys || nextKeys.length === 0) {
-        return [];
+      if (rule.next && typeof rule.next === "object") {
+        const nextKeys = Object.keys(rule.next);
+        if (nextKeys.length > 0) {
+          return nextKeys
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+        }
       }
-      return nextKeys
-        .map((item) => String(item || "").trim())
-        .filter(Boolean);
+      // Rule exists but no next statuses configured → block transitions
+      return [];
     }
-    return [];
+    
+    // No flow rule at all for this status → show all as fallback
+    return orderedLeadStatuses;
   })();
+
 
   const saveStatus = async () => {
     if (!lead?.id) return;
     const currentKey = String(lead?.status || "").trim().toLowerCase();
-    if (
-      currentKey === "payment" &&
-      statusValue &&
-      String(statusValue || "").trim().toLowerCase() !== "payment"
-    ) {
-      if (!lead.designStartAt || !lead.designEndAt) {
-        setError("Please record design start and end times before changing status from Payment");
-        return;
-      }
-    }
     if (
       currentKey === "design" &&
       statusValue &&
@@ -644,7 +911,7 @@ export default function LeadEditPage() {
       setShowRejectedModal(true);
       return;
     }
-    if (normalizedKey === "requirement" && statusNeedsModal(normalizedKey)) {
+    if ((normalizedKey === "requirement" || normalizedKey === "budget") && statusNeedsModal(normalizedKey)) {
       setShowRequirementModal(true);
       return;
     }
@@ -671,6 +938,28 @@ export default function LeadEditPage() {
 
       const updated = await updateLeadRowStatus(lead.id, statusValue, nextGroupId);
       let key = normalizedKey;
+      
+      // Assign verification to the current user when status changes to budget or payment
+      if (key === "budget") {
+        try {
+          console.log("Assigning budget verification to user:", user?.id);
+          await updateLeadDetails(lead.id, { budgetVerificationAssignedToUserId: user?.id });
+          console.log("✓ Budget verification assigned successfully");
+        } catch (err) {
+          console.warn("Failed to assign budget verification", err);
+        }
+      }
+      
+      if (key === "payment") {
+        try {
+          console.log("Assigning payment verification to user:", user?.id);
+          await updateLeadDetails(lead.id, { paymentVerificationAssignedToUserId: user?.id });
+          console.log("✓ Payment verification assigned successfully");
+        } catch (err) {
+          console.warn("Failed to assign payment verification", err);
+        }
+      }
+      
       if (key === "payment" || key === "design" || key === "production") {
         if ((key === "design" || key === "production") && lead.ownerUserId) {
           await updateLeadDetails(lead.id, { paymentOwnerId: lead.ownerUserId });
@@ -720,9 +1009,8 @@ export default function LeadEditPage() {
         if (normalizedKey === "attempted") setShowAttemptedModal(true);
         else if (normalizedKey === "interested") setShowInterestedModal(true);
         else if (normalizedKey === "rejected") setShowRejectedModal(true);
-        else if (normalizedKey === "requirement") setShowRequirementModal(true);
+        else if (normalizedKey === "requirement" || normalizedKey === "budget") setShowRequirementModal(true);
         else if (normalizedKey === "design") setShowDesignDurationModal(true);
-        else if (normalizedKey === "payment") setShowMoneyModal(true);
       }
       if (exitEditIfOwnershipMoved(mergedLead)) return;
     } catch (e) {
@@ -930,6 +1218,10 @@ export default function LeadEditPage() {
       setError("Please select category and add notes");
       return;
     }
+    if (!requirementFile && !requirementFileName) {
+      setError("Please attach a requirement file");
+      return;
+    }
     setRequirementSaving(true);
     setError("");
     try {
@@ -1098,6 +1390,223 @@ export default function LeadEditPage() {
     }
   };
 
+  const handleAddAddress = async () => {
+    if (!lead?.id) return;
+    
+    // Validation
+    if (!newAddressContactName.trim()) {
+      showError("Contact person name is required");
+      return;
+    }
+    if (!newAddressPhone.trim()) {
+      showError("Phone number is required");
+      return;
+    }
+    if (!newAddressLine1.trim()) {
+      showError("Address line 1 is required");
+      return;
+    }
+    if (!newAddressCity.trim()) {
+      showError("City is required");
+      return;
+    }
+    if (!newAddressState.trim()) {
+      showError("State/Province is required");
+      return;
+    }
+    if (!newAddressPincode.trim()) {
+      showError("Pincode is required");
+      return;
+    }
+    if (!newAddressCountry.trim()) {
+      showError("Country is required");
+      return;
+    }
+
+    // Validate GSTIN if provided (12 alphanumeric)
+    if (newAddressGstin && !/^[A-Za-z0-9]{12}$/.test(newAddressGstin)) {
+      showError("GSTIN must be 12 alphanumeric characters");
+      return;
+    }
+
+    // Validate phone number using configured country rules
+    const phoneValidationError = validatePhoneNumber(newAddressPhone, newAddressCountryCode);
+    if (phoneValidationError) {
+      setNewAddressPhoneError(phoneValidationError);
+      showError(phoneValidationError);
+      return;
+    }
+
+    // Validate email if provided
+    if (newAddressEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newAddressEmail)) {
+      showError("Invalid email format");
+      return;
+    }
+
+    setAddressLoading(true);
+    try {
+      const payload = {
+        type: newAddressType,
+        contactPersonName: newAddressContactName,
+        companyName: newAddressCompanyName || null,
+        gstin: newAddressGstin || null,
+        countryCode: newAddressCountryCode,
+        phone: newAddressPhone,
+        email: newAddressEmail || null,
+        addressLine1: newAddressLine1,
+        addressLine2: newAddressLine2 || null,
+        city: newAddressCity,
+        state: newAddressState,
+        pincode: newAddressPincode,
+        country: newAddressCountry,
+        isPrimary: newAddressPrimary,
+      };
+
+      const newAddress = await createAddress(lead.id, payload);
+
+      // Refresh addresses list
+      const type = newAddressType;
+      if (type === "BILLING") {
+        const addressesResponse = await getAddressesByLeadIdAndType(lead.id, "BILLING");
+        setBillingAddresses(addressesResponse);
+        // Auto-select the new address
+        setSelectedBillingAddressId(newAddress.id);
+      } else {
+        const addressesResponse = await getAddressesByLeadIdAndType(lead.id, "SHIPPING");
+        setShippingAddresses(addressesResponse);
+        // Auto-select the new address
+        setSelectedShippingAddressId(newAddress.id);
+      }
+
+      showSuccess(`${newAddressType === "BILLING" ? "Billing" : "Shipping"} address added successfully`);
+      setShowAddAddressModal(false);
+
+      // Reset form
+      setNewAddressContactName("");
+      setNewAddressCompanyName("");
+      setNewAddressGstin("");
+      setNewAddressCountryCode("+91");
+      setNewAddressPhone("");
+      setNewAddressPhoneError("");
+      setNewAddressEmail("");
+      setNewAddressLine1("");
+      setNewAddressLine2("");
+      setNewAddressCity("");
+      setNewAddressState("");
+      setNewAddressPincode("");
+      setNewAddressCountry("India");
+      setNewAddressPrimary(false);
+    } catch (e) {
+      showError(extractApiErrorMessage(e, `Failed to add ${newAddressType === "BILLING" ? "billing" : "shipping"} address`));
+    } finally {
+      setAddressLoading(false);
+    }
+  };
+
+  const submitVerifyDetails = async () => {
+    if (!lead?.id) return;
+    if (!selectedBillingAddressId) {
+      setError("Please select a billing address");
+      return;
+    }
+    if (!parsedInvoice && !verifyFile) {
+      setError("Invoice not found. Please upload a payment proof file or ensure invoice exists");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      let uploadedProof = null;
+      let invoiceAttachment = null;
+
+      // Upload invoice PDF automatically
+      if (parsedInvoice) {
+        try {
+          const doc = new jsPDF();
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageMargin = 15;
+          const invoiceNumber = `INV-${lead.leadId || lead.id}`;
+
+          doc.text("INVOICE", pageMargin, 15);
+          doc.text(`Company: ${lead.companyName || ""}`, pageMargin, 22);
+          doc.text(`Invoice #: ${invoiceNumber}`, pageWidth - pageMargin - 60, 25);
+          doc.text(`Date: ${parsedInvoice.createdAt ? new Date(parsedInvoice.createdAt).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN")}`, pageWidth - pageMargin - 60, 30);
+
+          const itemsWithTotals = (parsedInvoice.items || []).map(item => ({
+            description: item.description || "",
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice || 0,
+            total: (item.quantity || 1) * (item.unitPrice || 0),
+          }));
+
+          autoTable(doc, {
+            startY: 40,
+            head: [["Description", "Qty", "Unit Price", "Total"]],
+            body: itemsWithTotals.map(item => [
+              item.description,
+              item.quantity,
+              item.unitPrice,
+              item.total,
+            ]),
+            margin: { left: pageMargin, right: pageMargin },
+          });
+
+          const finalY = (doc.lastAutoTable?.finalY) || 100;
+          const t = parsedInvoice.totals || {};
+          doc.text(`Subtotal: ${(t.subtotal || 0).toFixed(2)}`, pageWidth - pageMargin - 40, finalY + 10);
+          doc.text(`CGST (${lead.invoiceCgstPercent || 0}%): ${(t.cgst || 0).toFixed(2)}`, pageWidth - pageMargin - 40, finalY + 17);
+          doc.text(`SGST (${lead.invoiceSgstPercent || 0}%): ${(t.sgst || 0).toFixed(2)}`, pageWidth - pageMargin - 40, finalY + 24);
+          doc.text(`Total: ${(t.total || 0).toFixed(2)}`, pageWidth - pageMargin - 40, finalY + 31);
+
+          const pdfBlob = doc.output("blob");
+          const pdfFile = new File([pdfBlob], `Invoice-${invoiceNumber}.pdf`, { type: "application/pdf" });
+
+          invoiceAttachment = await sendLeadChatAttachment(lead.id, {
+            threadType: "INTERNAL",
+            message: "Invoice attached for payment verification",
+            file: pdfFile,
+          });
+        } catch (invoiceErr) {
+          console.warn("Failed to generate/attach invoice PDF", invoiceErr);
+        }
+      }
+
+      // Upload payment proof if provided
+      if (verifyFile) {
+        uploadedProof = await uploadLeadPaymentProof(lead.id, verifyFile);
+      }
+
+      const payload = {
+        paymentProofFileName: uploadedProof?.fileName || verifyFileName || null,
+        paymentProofFilePath: uploadedProof?.filePath || null,
+        paymentProofNotes: verifyNotes || null,
+        paymentVerificationStatus: "PENDING",
+        paymentVerificationBillingAddressId: selectedBillingAddressId,
+        paymentVerificationShippingAddressId: shipSame ? selectedBillingAddressId : selectedShippingAddressId,
+        // Store the amount being verified - backend will add it to paidAmount on APPROVE
+        paymentVerificationAmount: verifyPaidAmount ? Number(verifyPaidAmount) : null,
+        // Snapshot the current invoice as the payment verified invoice (overrides on resubmit)
+        paymentVerifiedInvoiceData: lead.invoiceData || null,
+      };
+      const updated = await updateLeadDetails(lead.id, payload);
+      setLead((prev) => ({ ...(prev || {}), ...updated }));
+      showSuccess("Verification sent with invoice");
+      setShowVerifyModal(false);
+      // Reset form
+      setShipSame(false);
+      setSelectedBillingAddressId(null);
+      setSelectedShippingAddressId(null);
+      setVerifyFile(null);
+      setVerifyFileName("");
+      setVerifyNotes("");
+      if (exitEditIfOwnershipMoved(updated)) return;
+    } catch (e) {
+      setError(extractApiErrorMessage(e, "Failed to submit payment verification"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitMoneyDetails = async () => {
     if (!lead?.id) return;
     setSaving(true);
@@ -1110,7 +1619,6 @@ export default function LeadEditPage() {
       });
       setLead((prev) => ({ ...(prev || {}), ...updated }));
       showSuccess("Money details updated");
-      setShowMoneyModal(false);
     } catch (e) {
       setError(extractApiErrorMessage(e, "Failed to update money details"));
     } finally {
@@ -1217,6 +1725,18 @@ export default function LeadEditPage() {
         </button>
       </div>
 
+      {isConverted && (
+        <div className="alert alert-success mb-3" role="alert">
+          <strong>Lead converted to Deal.</strong> This lead is now locked. Continue the process from the Deals page.
+        </div>
+      )}
+
+      <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between mb-3">
+        <div className="lead-status-current">
+          <span className="text-muted">Current status:&nbsp;</span>
+          <span className="badge bg-primary">{effectiveStatus || "N/A"}</span>
+        </div>
+      </div>
       <div className="lead-status-timeline mb-3">
         {timelineStatuses.map((item, index) => {
           const stateClass =
@@ -1301,6 +1821,20 @@ export default function LeadEditPage() {
                     </button>
                   </li>
                   )}
+                  {(statusLower === "budget" || lead?.budgetVerificationStatus) && (
+                  <li className="nav-item" role="presentation">
+                    <button
+                      className={`nav-link ${activeTab === "budget" ? "active" : ""}`}
+                      id="budget-tab"
+                      onClick={() => setActiveTab("budget")}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === "budget"}
+                    >
+                      Budget
+                    </button>
+                  </li>
+                  )}
                   {isRejected && (
                   <li className="nav-item" role="presentation">
                     <button
@@ -1329,7 +1863,7 @@ export default function LeadEditPage() {
                     </button>
                   </li>
                   )}
-                  {showPaymentSummary && (
+                  {showPaymentSummary && statusLower !== "budget" && (
                   <li className="nav-item" role="presentation">
                     <button
                       className={`nav-link ${activeTab === "payment" ? "active" : ""}`}
@@ -1730,6 +2264,41 @@ export default function LeadEditPage() {
                 </div>
                 )}
 
+                {activeTab === "budget" && (statusLower === "budget" || lead?.budgetVerificationStatus) && (
+                <div className="tab-pane fade show active">
+                  <div className="mb-4">
+                    <h5 className="mb-3">Budget Verification</h5>
+                    {lead?.budgetVerificationStatus && (
+                      <div className={`alert d-flex align-items-center gap-2 mb-4 ${
+                        lead?.budgetVerificationStatus === "APPROVED" ? "alert-success" : "alert-info"
+                      }`}>
+                        <i className={`ti fs-5 ${
+                          lead?.budgetVerificationStatus === "APPROVED" ? "ti-circle-check" : "ti-calculator"
+                        }`}></i>
+                        <div>
+                          <strong>
+                            {lead?.budgetVerificationStatus === "APPROVED"
+                              ? "Budget Verification Done"
+                              : "Budget Verification In Progress"}
+                          </strong>
+                          <div className="small">
+                            {lead?.budgetVerificationStatus === "APPROVED"
+                              ? "Invoice is ready. You can now move to Payment."
+                              : "Budget team is calculating the invoice for this requirement."}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {lead?.budgetVerificationRejectionReason && (
+                      <div className="alert alert-danger mb-3">
+                        <strong>Rejection Reason:</strong>
+                        <div>{lead.budgetVerificationRejectionReason}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+
                 {activeTab === "design" && showDesignSummary && (
                 <div className="tab-pane fade show active">
                   <div>
@@ -1804,10 +2373,230 @@ export default function LeadEditPage() {
                 </div>
                 )}
 
-                {activeTab === "payment" && showPaymentSummary && (
+                {activeTab === "payment" && showPaymentSummary && statusLower !== "budget" && (
                 <div className="tab-pane fade show active">
                   <div>
                     <h5 className="mb-3">{isProduction ? "Production Details" : "Payment Tracker"}</h5>
+
+                    {/* Budget Verification Status Box - Only show during budget status */}
+                    {lead?.budgetVerificationStatus && statusLower === "budget" && (
+                      <div className="row mb-4">
+                        <div className="col-md-12">
+                          <div className={`card border-2 ${
+                            lead.budgetVerificationStatus === "APPROVED" ? "border-success bg-light-success" :
+                            lead.budgetVerificationStatus === "REJECTED" ? "border-danger bg-light-danger" :
+                            "border-info bg-light"
+                          }`}>
+                            <div className="card-body">
+                              <div className="row align-items-center">
+                                <div className="col-md-2 text-center">
+                                  {lead.budgetVerificationStatus === "APPROVED" ? (
+                                    <div className="fs-1 text-success"><i className="ti ti-circle-check-filled"></i></div>
+                                  ) : lead.budgetVerificationStatus === "REJECTED" ? (
+                                    <div className="fs-1 text-danger"><i className="ti ti-circle-x-filled"></i></div>
+                                  ) : (
+                                    <div className="fs-1 text-info"><i className="ti ti-calculator"></i></div>
+                                  )}
+                                </div>
+                                <div className="col-md-10">
+                                  <h5 className="mb-1">
+                                    {lead.budgetVerificationStatus === "APPROVED"
+                                      ? "Budget Approved"
+                                      : lead.budgetVerificationStatus === "REJECTED"
+                                      ? "Budget Rejected"
+                                      : "Budget Calculating"}
+                                  </h5>
+                                  <p className="text-muted mb-0">
+                                    {lead.budgetVerificationStatus === "APPROVED"
+                                      ? "Budget has been approved and invoice has been created."
+                                      : lead.budgetVerificationStatus === "REJECTED"
+                                      ? "Budget calculation has been rejected."
+                                      : "Budget team is calculating the invoice for this requirement."}
+                                  </p>
+                                  {lead.budgetVerificationStatus === "REJECTED" && lead.budgetVerificationRejectionReason && (
+                                    <div className="mt-2 p-2 rounded border border-danger bg-white">
+                                      <small className="text-danger fw-semibold">Reason:</small>
+                                      <p className="mb-0 text-dark">{lead.budgetVerificationRejectionReason}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Verification Status Box */}
+                    {lead?.paymentVerificationStatus && (
+                      <div className="row mb-4">
+                        <div className="col-md-12">
+                          <div className={`card border-2 ${
+                            lead.paymentVerificationStatus === "APPROVED" ? "border-success bg-light-success" :
+                            lead.paymentVerificationStatus === "REJECTED" ? "border-danger bg-light-danger" :
+                            "border-warning bg-light-warning"
+                          }`}>
+                            <div className="card-body">
+                              <div className="row align-items-center">
+                                <div className="col-md-2 text-center">
+                                  {lead.paymentVerificationStatus === "APPROVED" ? (
+                                    <div className="fs-1 text-success"><i className="ti ti-circle-check-filled"></i></div>
+                                  ) : lead.paymentVerificationStatus === "REJECTED" ? (
+                                    <div className="fs-1 text-danger"><i className="ti ti-circle-x-filled"></i></div>
+                                  ) : (
+                                    <div className="fs-1 text-warning"><i className="ti ti-clock"></i></div>
+                                  )}
+                                </div>
+                                <div className="col-md-10">
+                                  <h5 className="mb-1">
+                                    {lead.paymentVerificationStatus === "APPROVED" 
+                                      ? "Verification Successful" 
+                                      : lead.paymentVerificationStatus === "REJECTED" 
+                                      ? "Verification Rejected" 
+                                      : "Verification Pending"}
+                                  </h5>
+                                  <p className="text-muted mb-0">
+                                    {lead.paymentVerificationStatus === "APPROVED"
+                                      ? "Payment verification has been approved and invoice has been created."
+                                      : lead.paymentVerificationStatus === "REJECTED"
+                                      ? "Payment verification has been rejected."
+                                      : "This payment verification is pending approval."}
+                                  </p>
+                                  {lead.paymentVerificationStatus === "REJECTED" && lead.paymentVerificationRejectionReason && (
+                                    <div className="mt-2 p-2 rounded border border-danger bg-white">
+                                      <small className="text-danger fw-semibold">Reason:</small>
+                                      <p className="mb-0 text-dark">{lead.paymentVerificationRejectionReason}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Invoice from Accounts */}
+                    {parsedInvoice && (
+                      <div className="row mb-4">
+                        <div className="col-md-12">
+                          <div className="card border">
+                            <div className="card-header d-flex justify-content-between align-items-center py-2">
+                              <strong className="text-dark">
+                                <i className="ti ti-file-invoice me-1"></i>
+                                {parsedInvoice.type === "payment" ? "Payment Invoice" : parsedInvoice.type === "budget" ? "Budget Invoice" : "Invoice"}
+                                {parsedInvoice.type === "payment" && <span className="badge bg-success ms-2" style={{fontSize:"0.65rem"}}>Approved</span>}
+                                {parsedInvoice.type === "budget" && <span className="badge bg-warning text-dark ms-2" style={{fontSize:"0.65rem"}}>Budget</span>}
+                              </strong>
+                              <div className="d-flex align-items-center gap-2">
+                                {parsedInvoice.createdAt && (
+                                  <small className="text-muted">{new Date(parsedInvoice.createdAt).toLocaleString("en-IN")}</small>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={handleDownloadInvoice}
+                                >
+                                  <i className="ti ti-download me-1"></i>Download PDF
+                                </button>
+                              </div>
+                            </div>
+                            <div className="card-body p-0">
+                              <div className="table-responsive">
+                                <table className="table table-sm table-bordered mb-0">
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th>#</th>
+                                      <th>Description</th>
+                                      <th>HSN</th>
+                                      <th className="text-end">Qty</th>
+                                      <th className="text-end">Unit Price</th>
+                                      <th className="text-end">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(parsedInvoice.items || []).map((item, idx) => (
+                                      <tr key={idx}>
+                                        <td>{idx + 1}</td>
+                                        <td>{item.description}</td>
+                                        <td>{item.hsn || "-"}</td>
+                                        <td className="text-end">{item.quantity}</td>
+                                        <td className="text-end">&#8377;{Number(item.unitPrice || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        <td className="text-end">&#8377;{Number(item.subtotal ?? item.total ?? (Number(item.quantity || 0) * Number(item.unitPrice || 0))).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  {parsedInvoice.totals && (
+                                    <tfoot>
+                                      <tr>
+                                        <td colSpan={5} className="text-end fw-semibold">Subtotal</td>
+                                        <td className="text-end">&#8377;{Number(parsedInvoice.totals.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                      {parsedInvoice.totals.cgst > 0 && (
+                                        <tr>
+                                          <td colSpan={5} className="text-end text-muted">CGST ({parsedInvoice.totals.cgstPercent}%)</td>
+                                          <td className="text-end text-muted">&#8377;{Number(parsedInvoice.totals.cgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      )}
+                                      {parsedInvoice.totals.sgst > 0 && (
+                                        <tr>
+                                          <td colSpan={5} className="text-end text-muted">SGST ({parsedInvoice.totals.sgstPercent}%)</td>
+                                          <td className="text-end text-muted">&#8377;{Number(parsedInvoice.totals.sgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      )}
+                                      <tr className="table-success">
+                                        <td colSpan={5} className="text-end fw-bold">Grand Total</td>
+                                        <td className="text-end fw-bold">&#8377;{Number(parsedInvoice.totals.grandTotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                                      </tr>
+                                    </tfoot>
+                                  )}
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Verified Invoice - download only */}
+                    {parsedVerifiedInvoice && (
+                      <div className="row mb-4">
+                        <div className="col-md-12">
+                          <div className="card border border-success">
+                            <div className="card-header d-flex justify-content-between align-items-center py-2 bg-success bg-opacity-10">
+                              <strong className="text-success">
+                                <i className="ti ti-file-check me-1"></i>
+                                Payment Verified Invoice
+                                <span className="badge bg-success ms-2" style={{fontSize:"0.65rem"}}>Verified</span>
+                              </strong>
+                              <div className="d-flex align-items-center gap-2">
+                                {parsedVerifiedInvoice.createdAt && (
+                                  <small className="text-muted">{new Date(parsedVerifiedInvoice.createdAt).toLocaleString("en-IN")}</small>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-success"
+                                  onClick={handleDownloadVerifiedInvoice}
+                                >
+                                  <i className="ti ti-download me-1"></i>Download PDF
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Display Payment Notes if Available */}
+                    {lead?.paymentNotes && (
+                      <div className="row mb-4">
+                        <div className="col-md-12">
+                          <label className="text-muted small">Payment Notes</label>
+                          <p className="alert alert-info py-2 px-3 mb-0">{lead.paymentNotes}</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="row g-3">
                       {isProduction && (
                       <div className="col-12 mb-3">
@@ -1826,24 +2615,6 @@ export default function LeadEditPage() {
                         )}
                       </div>
                       )}
-                      <div className="col-md-12">
-                        <label className="form-label">Final Design</label>
-                        <div className="d-flex gap-2">
-                          <input
-                            className="form-control"
-                            value={finalDesignMessage?.attachmentName || "-"}
-                            readOnly
-                          />
-                          <button
-                            className="btn btn-outline-secondary"
-                            type="button"
-                            onClick={handleViewFinalDesign}
-                            disabled={!finalDesignMessage?.id}
-                          >
-                            View
-                          </button>
-                        </div>
-                      </div>
                       {isPayment && (
                         <>
                         <div className="col-md-12">
@@ -1858,15 +2629,75 @@ export default function LeadEditPage() {
                               }
                               readOnly
                             />
-                            <button
-                              className="btn btn-outline-primary"
-                              type="button"
-                              onClick={() => setShowMoneyModal(true)}
-                            >
-                              Money
-                            </button>
                           </div>
                         </div>
+
+                        <div className="col-md-6">
+                          <label className="form-label">Total Amount</label>
+                          <input
+                            className="form-control"
+                            type="number"
+                            value={totalAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTotalAmount(val);
+                              const paid = Number(paidAmount) || 0;
+                              setRemainingAmount(String(Math.max(0, Number(val) - paid)));
+                            }}
+                            placeholder="Total amount"
+                            min="0"
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label">Paid Amount</label>
+                          <input
+                            className="form-control"
+                            type="number"
+                            value={paidAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPaidAmount(val);
+                              const total = Number(totalAmount) || 0;
+                              setRemainingAmount(String(Math.max(0, total - Number(val))));
+                            }}
+                            placeholder="Paid amount"
+                            min="0"
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label">Remaining Amount</label>
+                          <input
+                            className="form-control"
+                            value={remainingAmount ? `Rs ${Number(remainingAmount).toLocaleString("en-IN")}` : "Rs 0"}
+                            readOnly
+                          />
+                        </div>
+                        <div className="col-md-6 d-flex align-items-end">
+                          <button
+                            className="btn btn-primary w-100"
+                            type="button"
+                            onClick={submitMoneyDetails}
+                            disabled={saving}
+                          >
+                            {saving ? "Saving..." : "Save Amount"}
+                          </button>
+                        </div>
+                        <div className="col-md-6 d-flex align-items-end">
+                          <button
+                            className="btn btn-outline-secondary w-100"
+                            type="button"
+                            onClick={() => {
+                              setVerifyPaidAmount(paidAmount);
+                              setVerifyNotes("");
+                              setVerifyFile(null);
+                              setVerifyFileName("");
+                              setShowVerifyModal(true);
+                            }}
+                          >
+                            Verify Payment
+                          </button>
+                        </div>
+
                         <div className="col-12">
                           <div className="progress" style={{ height: 8 }}>
                             <div
@@ -1951,6 +2782,15 @@ export default function LeadEditPage() {
               )}
 
               <div className={isEmployeeDesignView ? "col-12" : "col-lg-5"}>
+                {isConverted ? (
+                  <div className="card border">
+                    <div className="card-body text-center py-5">
+                      <i className="ti ti-lock" style={{ fontSize: 36, color: "#6c757d" }} />
+                      <h5 className="mt-3 mb-2">Lead Locked</h5>
+                      <p className="text-muted mb-0">This lead has been converted to a deal. No further edits are allowed here.</p>
+                    </div>
+                  </div>
+                ) : (<>
                 {isEmployeeDesignView ? (
                   <div className="mx-auto" style={{ maxWidth: "760px" }}>
                     <div className="mb-3">
@@ -2044,6 +2884,7 @@ export default function LeadEditPage() {
                   </div>
                 </div>
                 )}
+                </>)}
 
                 {!isEmployeeDesignView && (
                 <div className="card border mt-3">
@@ -2425,62 +3266,446 @@ export default function LeadEditPage() {
         </div>
       )}
 
-      {showMoneyModal && (
+
+      {showVerifyModal && (
         <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1050 }}>
-          <div className="card shadow-lg" style={{ width: "100%", maxWidth: "520px" }}>
-            <div className="card-header d-flex align-items-center justify-content-between">
-              <h5 className="mb-0">Money</h5>
+          <div className="card shadow-lg" style={{ width: "100%", maxWidth: "700px", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="card-header d-flex align-items-center justify-content-between sticky-top bg-white">
+              <h5 className="mb-0">Verify Payment</h5>
               <button
                 type="button"
                 className="btn-close"
                 aria-label="Close"
-                onClick={() => setShowMoneyModal(false)}
+                onClick={() => setShowVerifyModal(false)}
               />
             </div>
             <div className="card-body">
+              {error && <div className="alert alert-danger alert-dismissible fade show" role="alert">{error}</div>}
+              
+              {/* Payment Amount */}
               <div className="mb-3">
-                <label className="form-label">Total Amount</label>
+                <label className="form-label"><strong>Paid Amount</strong></label>
                 <input
                   className="form-control"
                   type="number"
-                  value={totalAmount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setTotalAmount(val);
-                    const paid = Number(paidAmount) || 0;
-                    setRemainingAmount(String(Math.max(0, Number(val) - paid)));
-                  }}
-                  placeholder="Total amount"
-                  min="0"
-                />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Paid Amount</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  value={paidAmount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setPaidAmount(val);
-                    const total = Number(totalAmount) || 0;
-                    setRemainingAmount(String(Math.max(0, total - Number(val))));
-                  }}
+                  value={verifyPaidAmount}
+                  onChange={(e) => setVerifyPaidAmount(e.target.value)}
                   placeholder="Paid amount"
                   min="0"
                 />
               </div>
+
+              {/* Payment Proof */}
               <div className="mb-3">
-                <label className="form-label">Remaining Amount</label>
+                <label className="form-label"><strong>Payment Proof Document</strong></label>
+                <div className="alert alert-info mb-2" role="alert">
+                  <small>{parsedInvoice ? "Invoice will be automatically attached. Upload additional payment proof if needed." : "Upload payment proof document for verification."}</small>
+                </div>
                 <input
                   className="form-control"
-                  value={remainingAmount ? `Rs ${Number(remainingAmount).toLocaleString("en-IN")}` : "Rs 0"}
-                  readOnly
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setVerifyFile(file);
+                    setVerifyFileName(file?.name || "");
+                  }}
+                />
+                {verifyFileName && <small className="text-muted">Selected: {verifyFileName}</small>}
+              </div>
+
+              {/* Payment Notes */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Payment Notes</strong></label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  placeholder="Payment notes"
                 />
               </div>
-              <div className="d-flex justify-content-end">
-                <button className="btn btn-primary" onClick={submitMoneyDetails} disabled={saving}>
+
+              {/* Billing Address Section */}
+              <div className="mb-4">
+                <h6 className="border-bottom pb-2"><strong>Billing Address</strong></h6>
+                <div className="mb-3">
+                  <label className="form-label">Select Billing Address</label>
+                  <div className="d-flex gap-2">
+                    <select
+                      className="form-select"
+                      value={selectedBillingAddressId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        setSelectedBillingAddressId(id);
+                        if (shipSame) {
+                          setSelectedShippingAddressId(id);
+                        }
+                      }}
+                      disabled={addressLoading || billingAddresses.length === 0}
+                    >
+                      <option value="">-- Select Address --</option>
+                      {billingAddresses.map((addr) => (
+                        <option key={addr.id} value={addr.id}>
+                          {addr.contactPersonName} - {addr.city}
+                          {addr.isPrimary ? " (Primary)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-outline-secondary"
+                      type="button"
+                      onClick={() => {
+                        setNewAddressType("BILLING");
+                        setShowAddAddressModal(true);
+                      }}
+                      title="Add new billing address"
+                    >
+                      <i className="ti ti-plus"></i> Add
+                    </button>
+                  </div>
+                  {billingAddresses.length === 0 && (
+                    <small className="text-warning">No billing addresses found. Please add one.</small>
+                  )}
+                </div>
+              </div>
+
+              {/* Shipping Address Section */}
+              <div className="mb-4">
+                <div className="form-check mb-3">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="shipSame"
+                    checked={shipSame}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setShipSame(checked);
+                      setSelectedShippingAddressId(checked ? selectedBillingAddressId : null);
+                    }}
+                  />
+                  <label className="form-check-label" htmlFor="shipSame">
+                    <strong>Shipping address is same as billing</strong>
+                  </label>
+                  <div>
+                    <small className="text-muted">
+                      Click this checkbox to use same shipping address as billing address. If unchecked, select a separate shipping address.
+                    </small>
+                  </div>
+                </div>
+
+                {!shipSame && (
+                  <div>
+                    <h6 className="border-bottom pb-2"><strong>Shipping Address</strong></h6>
+                    <div className="mb-3">
+                      <label className="form-label">Select Shipping Address</label>
+                      <div className="d-flex gap-2">
+                        <select
+                          className="form-select"
+                          value={selectedShippingAddressId || ""}
+                          onChange={(e) => setSelectedShippingAddressId(e.target.value ? Number(e.target.value) : null)}
+                          disabled={addressLoading || shippingAddresses.length === 0}
+                        >
+                          <option value="">-- Select Address --</option>
+                          {shippingAddresses.map((addr) => (
+                            <option key={addr.id} value={addr.id}>
+                              {addr.contactPersonName} - {addr.city}
+                              {addr.isPrimary ? " (Primary)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn btn-outline-secondary"
+                          type="button"
+                          onClick={() => {
+                            setNewAddressType("SHIPPING");
+                            setShowAddAddressModal(true);
+                          }}
+                          title="Add new shipping address"
+                        >
+                          <i className="ti ti-plus"></i> Add
+                        </button>
+                      </div>
+                      {shippingAddresses.length === 0 && (
+                        <small className="text-warning">No shipping addresses found. Please add one.</small>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <div className="d-flex justify-content-end gap-2">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowVerifyModal(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={submitVerifyDetails}
+                  disabled={
+                    saving ||
+                    !selectedBillingAddressId ||
+                    (!shipSame && !selectedShippingAddressId)
+                  }
+                >
                   {saving ? "Saving..." : "Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddAddressModal && (
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50" style={{ zIndex: 1100 }}>
+          <div className="card shadow-lg" style={{ width: "100%", maxWidth: "600px", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="card-header d-flex align-items-center justify-content-between sticky-top bg-white">
+              <h5 className="mb-0">Add {newAddressType === "BILLING" ? "Billing" : "Shipping"} Address</h5>
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Close"
+                onClick={() => {
+                  setShowAddAddressModal(false);
+                  // Reset form
+                  setNewAddressContactName("");
+                  setNewAddressCompanyName("");
+                  setNewAddressGstin("");
+                  setNewAddressCountryCode("+91");
+                  setNewAddressPhone("");
+                  setNewAddressEmail("");
+                  setNewAddressLine1("");
+                  setNewAddressLine2("");
+                  setNewAddressCity("");
+                  setNewAddressState("");
+                  setNewAddressPincode("");
+                  setNewAddressCountry("India");
+                  setNewAddressPrimary(false);
+                }}
+              />
+            </div>
+            <div className="card-body">
+              {/* Contact Person Name */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Contact Person Name *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressContactName}
+                  onChange={(e) => setNewAddressContactName(e.target.value)}
+                  placeholder="Contact person name"
+                />
+              </div>
+
+              {/* Company Name */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Company Name</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressCompanyName}
+                  onChange={(e) => setNewAddressCompanyName(e.target.value)}
+                  placeholder="Company name"
+                />
+              </div>
+
+              {/* GSTIN */}
+              <div className="mb-3">
+                <label className="form-label"><strong>GSTIN</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressGstin}
+                  onChange={(e) => setNewAddressGstin(e.target.value.toUpperCase())}
+                  placeholder="12-digit alphanumeric"
+                  maxLength="12"
+                />
+                <small className="text-muted">Format: 12 alphanumeric characters</small>
+              </div>
+
+              {/* Phone */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Phone Number *</strong></label>
+                <div className="d-flex gap-2">
+                  <select
+                    className="form-select"
+                    style={{ maxWidth: "160px" }}
+                    value={newAddressCountryCode}
+                    onChange={(e) => {
+                      setNewAddressCountryCode(e.target.value);
+                      // re-validate/trim based on new country max length
+                      const maxLen = getCountryOptionByValue(e.target.value)?.maxLength || 15;
+                      const allowed = getCountryAllowedLengths(e.target.value);
+                      setNewAddressPhone((prev) => sanitizePhoneDigits(prev, maxLen, allowed));
+                      setNewAddressPhoneError("");
+                    }}
+                  >
+                    {COUNTRY_CODE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="form-control"
+                    type="text"
+                    value={newAddressPhone}
+                    onChange={(e) => {
+                      const maxLen = getCountryOptionByValue(newAddressCountryCode)?.maxLength || 15;
+                      const allowed = getCountryAllowedLengths(newAddressCountryCode);
+                      setNewAddressPhone(sanitizePhoneDigits(e.target.value, maxLen, allowed));
+                      setNewAddressPhoneError("");
+                    }}
+                    placeholder="Enter phone"
+                    maxLength={getCountryOptionByValue(newAddressCountryCode)?.maxLength || 15}
+                  />
+                </div>
+                {newAddressPhoneError ? (
+                  <small className="text-danger">{newAddressPhoneError}</small>
+                ) : (
+                  <small className="text-muted">
+                    {`Expected length: ${getCountryAllowedLengths(newAddressCountryCode).length
+                      ? getCountryAllowedLengths(newAddressCountryCode).join(" or ")
+                      : getCountryOptionByValue(newAddressCountryCode)?.maxLength}
+                    `}
+                  </small>
+                )}
+              </div>
+
+              {/* Email */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Email</strong></label>
+                <input
+                  className="form-control"
+                  type="email"
+                  value={newAddressEmail}
+                  onChange={(e) => setNewAddressEmail(e.target.value)}
+                  placeholder="Email address"
+                />
+              </div>
+
+              {/* Address Line 1 */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Address Line 1 *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressLine1}
+                  onChange={(e) => setNewAddressLine1(e.target.value)}
+                  placeholder="Street address"
+                />
+              </div>
+
+              {/* Address Line 2 */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Address Line 2</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressLine2}
+                  onChange={(e) => setNewAddressLine2(e.target.value)}
+                  placeholder="Apartment, suite, etc."
+                />
+              </div>
+
+              {/* City */}
+              <div className="mb-3">
+                <label className="form-label"><strong>City *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressCity}
+                  onChange={(e) => setNewAddressCity(e.target.value)}
+                  placeholder="City"
+                />
+              </div>
+
+              {/* State */}
+              <div className="mb-3">
+                <label className="form-label"><strong>State/Province *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressState}
+                  onChange={(e) => setNewAddressState(e.target.value)}
+                  placeholder="State or Province"
+                />
+              </div>
+
+              {/* Pincode */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Pincode/Zip Code *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressPincode}
+                  onChange={(e) => setNewAddressPincode(e.target.value)}
+                  placeholder="Postal code"
+                />
+              </div>
+
+              {/* Country */}
+              <div className="mb-3">
+                <label className="form-label"><strong>Country *</strong></label>
+                <input
+                  className="form-control"
+                  type="text"
+                  value={newAddressCountry}
+                  onChange={(e) => setNewAddressCountry(e.target.value)}
+                  placeholder="Country"
+                />
+              </div>
+
+              {/* Primary Address */}
+              <div className="mb-4">
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="isPrimary"
+                    checked={newAddressPrimary}
+                    onChange={(e) => setNewAddressPrimary(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="isPrimary">
+                    <strong>Set as primary address</strong>
+                  </label>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="d-flex justify-content-end gap-2">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowAddAddressModal(false);
+                    // Reset form
+                    setNewAddressContactName("");
+                    setNewAddressCompanyName("");
+                    setNewAddressGstin("");
+                    setNewAddressCountryCode("+91");
+                    setNewAddressPhone("");
+                    setNewAddressEmail("");
+                    setNewAddressLine1("");
+                    setNewAddressLine2("");
+                    setNewAddressCity("");
+                    setNewAddressState("");
+                    setNewAddressPincode("");
+                    setNewAddressCountry("India");
+                    setNewAddressPrimary(false);
+                  }}
+                  disabled={addressLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleAddAddress}
+                  disabled={addressLoading || !newAddressContactName || !newAddressLine1 || !newAddressCity || !newAddressState || !newAddressPincode || !newAddressCountry || !newAddressPhone}
+                >
+                  {addressLoading ? "Adding..." : "Add Address"}
                 </button>
               </div>
             </div>

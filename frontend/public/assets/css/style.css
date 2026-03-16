@@ -2255,7 +2255,7 @@ button:focus {
   border-color: #ffc107 !important;
 }
 .border.border-danger {
-  border: 1px solid #E70D0D !important;
+  border: 1px solid #fff !important;
   opacity: 1;
 }
 .border.border-danger.border-opacity-10 {
@@ -6405,11 +6405,11 @@ h6,
 }
 
 .fs-4 {
-  font-size: 0.25rem !important;
+  font-size: 1 !important;
 }
 
 .fs-5 {
-  font-size: 0.3125rem !important;
+  font-size: 1 !important;
 }
 
 .fs-6 {

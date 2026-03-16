@@ -384,10 +384,30 @@ export default function LeadsPage() {
               .filter(Boolean)
               .filter((item) => !/site\s*visit/i.test(item))
           : [];
+
+        const flowStatuses = Array.isArray(flowPayload?.rules)
+          ? flowPayload.rules
+              .flatMap((rule) => {
+                const base = String(rule?.status || "").trim();
+                const next =
+                  rule?.next && typeof rule.next === "object"
+                    ? Object.keys(rule.next).map((k) => String(k || "").trim())
+                    : [];
+                return [base, ...next];
+              })
+              .filter(Boolean)
+          : [];
+
+        const mergedStatuses = [
+          ...normalizedLeadStatuses,
+          ...flowStatuses,
+        ]
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+          .filter((item, index, arr) => arr.indexOf(item) === index);
+
         setLeadStatusOptions(
-          normalizedLeadStatuses.length
-            ? normalizedLeadStatuses
-            : DEFAULT_LEAD_STATUSES,
+          mergedStatuses.length ? mergedStatuses : DEFAULT_LEAD_STATUSES,
         );
         setFlowRules(Array.isArray(flowPayload?.rules) ? flowPayload.rules : []);
       } catch (e) {
@@ -766,16 +786,31 @@ export default function LeadsPage() {
   };
 
   const orderedLeadStatuses = useMemo(() => {
+    // Extract statuses from flow rules
+    const flowStatuses = Array.isArray(flowRules)
+      ? flowRules
+          .flatMap((rule) => {
+            const base = String(rule?.status || "").trim();
+            const next =
+              rule?.next && typeof rule.next === "object"
+                ? Object.keys(rule.next).map((k) => String(k || "").trim())
+                : [];
+            return [base, ...next];
+          })
+          .filter(Boolean)
+      : [];
+
     const combined = [
       ...DEFAULT_LEAD_STATUSES,
       ...(leadStatusOptions || []),
       ...(leadFilters.leadStatuses || []),
+      ...flowStatuses,
     ];
     const normalized = combined
       .map((item) => String(item || "").trim())
       .filter(Boolean);
     return Array.from(new Set(normalized));
-  }, [leadStatusOptions, leadFilters.leadStatuses]);
+  }, [leadStatusOptions, leadFilters.leadStatuses, flowRules]);
 
   const normalizeKey = (s) => String(s || "").trim().toLowerCase();
   const displayStatus = (s) => {
@@ -786,22 +821,31 @@ export default function LeadsPage() {
     if (!current) {
       return orderedLeadStatuses;
     }
+    
+    // Find the flow rule for the current status
     const rule = Array.isArray(flowRules)
       ? flowRules.find(
           (r) =>
             normalizeKey(r?.status) === current,
         )
       : null;
-    const nextKeys = rule?.next ? Object.keys(rule.next) : [];
+    
+    // Rule exists — only show explicitly configured next statuses
     if (rule) {
-      if (!nextKeys || nextKeys.length === 0) {
-        return [];
+      if (rule.next && typeof rule.next === "object") {
+        const nextKeys = Object.keys(rule.next);
+        if (nextKeys.length > 0) {
+          return nextKeys
+            .map((item) => String(item || "").trim())
+            .filter(Boolean);
+        }
       }
-      return nextKeys
-        .map((item) => String(item || "").trim())
-        .filter(Boolean);
+      // Rule exists but no next statuses configured → block transitions
+      return [];
     }
-    return [];
+    
+    // No flow rule at all for this status → show all as fallback
+    return orderedLeadStatuses;
   }, [flowRules, orderedLeadStatuses, statusLead]);
 
   const openRemarkModal = (lead) => {

@@ -639,23 +639,58 @@ export default function UserGroupEditPage() {
             </div>
             <div className="col-12">
               <label className="form-label">Teams</label>
-              <select
-                className="form-select"
-                multiple
-                value={scope.teamIds}
-                onChange={(e) =>
-                  setScope((prev) => ({
-                    ...prev,
-                    teamIds: Array.from(e.target.selectedOptions, (opt) => opt.value),
-                  }))
-                }
-                disabled={orgLoading || !scope.departmentId || isManager}
-                style={{ minHeight: 120 }}
-              >
-                {teams.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
+              <div className="d-flex gap-2">
+                <select
+                  className="form-select"
+                  value=""
+                  onChange={(e) => {
+                    const teamId = e.target.value;
+                    if (teamId && !scope.teamIds.includes(teamId)) {
+                      setScope((prev) => ({
+                        ...prev,
+                        teamIds: [...prev.teamIds, teamId],
+                      }));
+                    }
+                    e.target.value = "";
+                  }}
+                  disabled={orgLoading || !scope.departmentId || isManager}
+                >
+                  <option value="">Select Team</option>
+                  {teams
+                    .filter((item) => !scope.teamIds.includes(String(item.id)))
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              {scope.teamIds.length > 0 && (
+                <div className="mt-2 d-flex flex-wrap gap-2">
+                  {scope.teamIds.map((teamId) => {
+                    const team = teams.find((t) => String(t.id) === String(teamId));
+                    return (
+                      <span
+                        key={teamId}
+                        className="badge bg-primary d-inline-flex align-items-center gap-2"
+                        style={{ fontSize: "0.875rem", padding: "0.5rem 0.75rem" }}
+                      >
+                        {team?.name || teamId}
+                        <i
+                          className="ti ti-x"
+                          style={{ cursor: "pointer" }}
+                          onClick={() =>
+                            setScope((prev) => ({
+                              ...prev,
+                              teamIds: prev.teamIds.filter((id) => id !== teamId),
+                            }))
+                          }
+                        ></i>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

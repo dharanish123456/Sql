@@ -15,6 +15,7 @@ import com.nexorcrm.backend.entity.ActivationStatus;
 import com.nexorcrm.backend.entity.ChannelPartner;
 import com.nexorcrm.backend.entity.Lead;
 import com.nexorcrm.backend.entity.LeadLog;
+import com.nexorcrm.backend.entity.LeadInvoiceItem;
 import com.nexorcrm.backend.entity.Role;
 import com.nexorcrm.backend.entity.User;
 import com.nexorcrm.backend.entity.UserGroup;
@@ -22,6 +23,7 @@ import com.nexorcrm.backend.entity.UserGroupMember;
 import com.nexorcrm.backend.repo.ChannelPartnerRepository;
 import com.nexorcrm.backend.repo.LeadRepository;
 import com.nexorcrm.backend.repo.LeadLogRepository;
+import com.nexorcrm.backend.repo.LeadInvoiceItemRepository;
 import com.nexorcrm.backend.repo.LeadStatusRepository;
 import com.nexorcrm.backend.repo.LeadTypeRepository;
 import com.nexorcrm.backend.repo.UserGroupMemberRepository;
@@ -38,10 +40,15 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -79,8 +86,12 @@ public class LeadService {
     private final AuditService auditService;
     private final LeadFlowService leadFlowService;
     private final LeadChatService leadChatService;
+    private final ObjectMapper objectMapper;
+    private final LeadInvoiceItemRepository leadInvoiceItemRepository;
+    private final DealService dealService;
     private static final String DEFAULT_CUSTOMER_PASSWORD = "Customer@123";
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private static final Logger logger = LoggerFactory.getLogger(LeadService.class);
 
     @Value("${app.upload-dir:uploads}")
     private String uploadDir;
@@ -95,7 +106,10 @@ public class LeadService {
                        UserGroupMemberRepository userGroupMemberRepository,
                        AuditService auditService,
                        LeadFlowService leadFlowService,
-                       LeadChatService leadChatService) {
+                       LeadChatService leadChatService,
+                       ObjectMapper objectMapper,
+                       LeadInvoiceItemRepository leadInvoiceItemRepository,
+                       DealService dealService) {
         this.leadRepository = leadRepository;
         this.leadLogRepository = leadLogRepository;
         this.channelPartnerRepository = channelPartnerRepository;
@@ -107,6 +121,9 @@ public class LeadService {
         this.auditService = auditService;
         this.leadFlowService = leadFlowService;
         this.leadChatService = leadChatService;
+        this.objectMapper = objectMapper;
+        this.leadInvoiceItemRepository = leadInvoiceItemRepository;
+        this.dealService = dealService;
     }
 
     /**
@@ -429,6 +446,12 @@ public class LeadService {
         }
 
         applyFlowStatusTransition(row, status, request.getNextGroupId());
+        // when moving to Budget, set budget verification status PENDING and assign round-robin
+        // NOTE: lead ownership is intentionally NOT changed; only budgetVerificationAssignedToUserId is set
+        if ("budget".equalsIgnoreCase(status)) {
+            row.setBudgetVerificationStatus("PENDING");
+            assignBudgetRoundRobin(row);
+        }
         // when moving back to payment restore previous owner if present
         if ("payment".equalsIgnoreCase(status)) {
             if (row.getPaymentOwnerId() != null) {
@@ -442,6 +465,14 @@ public class LeadService {
         Lead saved = leadRepository.save(row);
         auditService.log("LEAD_STATUS_UPDATE", "Updated lead status", actor.getEmail());
         createLeadLog(saved.getId(), "Status changed to " + saved.getStatus(), actor);
+
+        if ("deal".equalsIgnoreCase(saved.getStatus())) {
+            dealService.createOrUpdateFromLead(saved);
+        }
+        
+        if ("payment".equalsIgnoreCase(saved.getStatus())) {
+            dealService.syncLeadStatusToDeal(saved.getId(), "payment", actor.getEmail());
+        }
 
         Map<Long, String> cpNameMap = new HashMap<>();
         if (saved.getChannelPartnerId() != null) {
@@ -828,9 +859,50 @@ public class LeadService {
         if (request.getTotalAmount() != null) {
             row.setTotalAmount(request.getTotalAmount());
         }
-        if (request.getPaidAmount() != null) {
-            row.setPaidAmount(request.getPaidAmount());
+        // Handle paid amount logic:
+        // - On PENDING: save paymentVerificationAmount (the amount being verified), never touch paidAmount
+        // - On APPROVED: add paymentVerificationAmount (stored from when request was submitted) to current paidAmount
+        // - On REJECTED: no change to paidAmount
+        // - No status change (manual edit): allow direct paidAmount update
+        String newPaymentStatus = request.getPaymentVerificationStatus() != null ?
+            normalizeNullable(request.getPaymentVerificationStatus()) : null;
+
+        if ("PENDING".equals(newPaymentStatus)) {
+            // Store the amount being requested for verification
+            if (request.getPaymentVerificationAmount() != null) {
+                row.setPaymentVerificationAmount(request.getPaymentVerificationAmount());
+            } else if (request.getPaidAmount() != null) {
+                // Fallback: if sent as paidAmount, store it as verificationAmount
+                row.setPaymentVerificationAmount(request.getPaidAmount());
+            }
+            // Never touch the actual paidAmount on PENDING
+        } else if ("APPROVED".equals(newPaymentStatus)) {
+            // Add the stored verification amount to current paidAmount
+            BigDecimal amountToAdd = row.getPaymentVerificationAmount() != null
+                ? row.getPaymentVerificationAmount()
+                : (request.getPaidAmount() != null ? request.getPaidAmount() : BigDecimal.ZERO);
+            if (amountToAdd.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal currentPaid = row.getPaidAmount() != null ? row.getPaidAmount() : BigDecimal.ZERO;
+                row.setPaidAmount(currentPaid.add(amountToAdd));
+                // Update remaining amount if totalAmount is set
+                if (row.getTotalAmount() != null) {
+                    BigDecimal newPaid = row.getPaidAmount();
+                    BigDecimal remaining = row.getTotalAmount().subtract(newPaid);
+                    row.setRemainingAmount(remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining);
+                }
+            }
+            // Clear the pending verification amount after approval
+            row.setPaymentVerificationAmount(null);
+        } else if (newPaymentStatus == null) {
+            // Manual edit with no verification status change — allow direct update
+            if (request.getPaidAmount() != null) {
+                row.setPaidAmount(request.getPaidAmount());
+            }
+            if (request.getPaymentVerificationAmount() != null) {
+                row.setPaymentVerificationAmount(request.getPaymentVerificationAmount());
+            }
         }
+        // REJECTED: no changes to paid amounts
         if (request.getRemainingAmount() != null) {
             row.setRemainingAmount(request.getRemainingAmount());
         }
@@ -861,8 +933,89 @@ public class LeadService {
         if (request.getRequirementNotes() != null) {
             row.setRequirementNotes(normalizeNullable(request.getRequirementNotes()));
         }
+        // payment verification fields
+        if (request.getPaymentProofFileName() != null) {
+            row.setPaymentProofFileName(normalizeNullable(request.getPaymentProofFileName()));
+        }
+        if (request.getPaymentProofFilePath() != null) {
+            row.setPaymentProofFilePath(normalizeNullable(request.getPaymentProofFilePath()));
+        }
+        if (request.getPaymentProofNotes() != null) {
+            row.setPaymentProofNotes(normalizeNullable(request.getPaymentProofNotes()));
+        }
+        if (request.getPaymentVerificationStatus() != null) {
+            String newStatus = normalizeNullable(request.getPaymentVerificationStatus());
+            row.setPaymentVerificationStatus(newStatus);
+        }
+        if (request.getPaymentVerificationRejectionReason() != null) {
+            row.setPaymentVerificationRejectionReason(normalizeNullable(request.getPaymentVerificationRejectionReason()));
+        }
+
+        // payment verification address IDs
+        if (request.getPaymentVerificationBillingAddressId() != null) {
+            row.setPaymentVerificationBillingAddressId(request.getPaymentVerificationBillingAddressId());
+        }
+        if (request.getPaymentVerificationShippingAddressId() != null) {
+            row.setPaymentVerificationShippingAddressId(request.getPaymentVerificationShippingAddressId());
+        }
+        if (request.getPaymentVerificationAssignedToUserId() != null) {
+            row.setPaymentVerificationAssignedToUserId(request.getPaymentVerificationAssignedToUserId());
+        }
+
+        // payment details captured from payment verification
+        if (request.getPaymentMethod() != null) {
+            row.setPaymentMethod(normalizeNullable(request.getPaymentMethod()));
+        }
+        if (request.getTransactionId() != null) {
+            row.setTransactionId(normalizeNullable(request.getTransactionId()));
+        }
+        if (request.getPaymentDate() != null) {
+            row.setPaymentDate(request.getPaymentDate());
+        }
+        if (request.getPaymentNotes() != null) {
+            row.setPaymentNotes(normalizeNullable(request.getPaymentNotes()));
+        }
+        if (request.getRejectionNotes() != null) {
+            row.setRejectionNotes(normalizeNullable(request.getRejectionNotes()));
+        }
+        boolean invoiceUpdated = false;
+        if (request.getInvoiceData() != null) {
+            row.setInvoiceData(normalizeNullable(request.getInvoiceData()));
+            invoiceUpdated = true;
+        }
+        if (request.getPaymentVerifiedInvoiceData() != null) {
+            row.setPaymentVerifiedInvoiceData(normalizeNullable(request.getPaymentVerifiedInvoiceData()));
+        }
+        if (request.getInvoiceCgstPercent() != null) {
+            row.setInvoiceCgstPercent(request.getInvoiceCgstPercent());
+            invoiceUpdated = true;
+        }
+        if (request.getInvoiceSgstPercent() != null) {
+            row.setInvoiceSgstPercent(request.getInvoiceSgstPercent());
+            invoiceUpdated = true;
+        }
+
+        // Assign payment verification using round-robin whenever status becomes PENDING (including re-submissions after rejection)
+        if (request.getPaymentVerificationStatus() != null && "PENDING".equals(normalizeNullable(request.getPaymentVerificationStatus()))) {
+            assignPaymentVerificationRoundRobin(row);
+        }
+
+        // Handle budget verification status fields
+        if (request.getBudgetVerificationStatus() != null) {
+            row.setBudgetVerificationStatus(normalizeNullable(request.getBudgetVerificationStatus()));
+        }
+        if (request.getBudgetVerificationRejectionReason() != null) {
+            row.setBudgetVerificationRejectionReason(normalizeNullable(request.getBudgetVerificationRejectionReason()));
+        }
+        if (request.getBudgetVerificationAssignedToUserId() != null) {
+            row.setBudgetVerificationAssignedToUserId(request.getBudgetVerificationAssignedToUserId());
+        }
 
         Lead saved = leadRepository.save(row);
+        // Sync invoice data to the deal if it was updated (keeps deal in sync after payment approvals)
+        if (invoiceUpdated) {
+            dealService.syncInvoiceDataToDeals(saved.getId(), saved.getInvoiceData(), saved.getInvoiceCgstPercent(), saved.getInvoiceSgstPercent());
+        }
         auditService.log("LEAD_DETAILS_UPDATE", "Updated lead details", actor.getEmail());
         createLeadLog(saved.getId(), "Lead details updated", actor);
 
@@ -875,6 +1028,110 @@ public class LeadService {
         Map<Long, String> userNameMap = loadUserNameMap(List.of(saved));
 
         return toResponse(saved, cpNameMap, groupNameMap, userNameMap);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LeadInvoiceItem> getInvoiceItems(Long leadId, String actorPrincipal) {
+        User actor = assertLeadAccess(actorPrincipal);
+        Lead lead = leadRepository.findByIdAndDeletedFalse(leadId)
+                .orElseThrow(() -> new EntityNotFoundException("Lead not found"));
+        Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
+        if (!canViewLead(actor, lead, visibleGroupIds)) {
+            throw new AccessDeniedException("You do not have permission to access this lead");
+        }
+        return leadInvoiceItemRepository.findByLeadIdOrderBySortOrderAsc(leadId);
+    }
+
+    @Transactional
+    public List<LeadInvoiceItem> saveInvoiceItems(Long leadId, List<Map<String, Object>> itemsData,
+                                                  BigDecimal cgstPercent, BigDecimal sgstPercent,
+                                                  String actorPrincipal) {
+        User actor = assertLeadAccess(actorPrincipal);
+        Lead lead = leadRepository.findByIdAndDeletedFalse(leadId)
+                .orElseThrow(() -> new EntityNotFoundException("Lead not found"));
+        Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
+        if (!canViewLead(actor, lead, visibleGroupIds)) {
+            throw new AccessDeniedException("You do not have permission to access this lead");
+        }
+
+        // Replace all existing items for this lead
+        leadInvoiceItemRepository.deleteByLeadId(leadId);
+
+        List<LeadInvoiceItem> result = new java.util.ArrayList<>();
+        for (int i = 0; i < (itemsData == null ? 0 : itemsData.size()); i++) {
+            Map<String, Object> data = itemsData.get(i);
+            LeadInvoiceItem item = new LeadInvoiceItem();
+            item.setLeadId(leadId);
+            item.setDescription(String.valueOf(data.getOrDefault("description", "")));
+            item.setHsn(data.get("hsn") != null ? String.valueOf(data.get("hsn")) : null);
+            BigDecimal qty = toBigDecimal(data.get("quantity"));
+            BigDecimal price = toBigDecimal(data.get("unitPrice"));
+            item.setQuantity(qty);
+            item.setUnitPrice(price);
+            item.setSubtotal(qty.multiply(price));
+            item.setSortOrder(i);
+            result.add(leadInvoiceItemRepository.save(item));
+        }
+
+        // Update CGST/SGST on the lead
+        if (cgstPercent != null) lead.setInvoiceCgstPercent(cgstPercent);
+        if (sgstPercent != null) lead.setInvoiceSgstPercent(sgstPercent);
+        leadRepository.save(lead);
+
+        auditService.log("LEAD_INVOICE_ITEMS_SAVED", "Saved invoice items for lead " + leadId, actor.getEmail());
+        return result;
+    }
+
+    private BigDecimal toBigDecimal(Object val) {
+        if (val == null) return BigDecimal.ZERO;
+        if (val instanceof Number) return new BigDecimal(val.toString());
+        try { return new BigDecimal(String.valueOf(val)); } catch (Exception e) { return BigDecimal.ZERO; }
+    }
+
+    public Map<String, Object> uploadPaymentProof(Long id, MultipartFile file, String actorPrincipal) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File is required");
+        }
+
+        User actor = assertLeadAccess(actorPrincipal);
+        Set<Long> visibleGroupIds = resolveVisibleLeadGroupIds(actor);
+        Lead row = leadRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new EntityNotFoundException("Lead not found"));
+        if (!canViewLead(actor, row, visibleGroupIds)) {
+            throw new AccessDeniedException("You do not have permission to update this lead");
+        }
+
+        try {
+            String originalName = StringUtils.hasText(file.getOriginalFilename())
+                    ? Paths.get(file.getOriginalFilename()).getFileName().toString()
+                    : "payment-proof";
+
+            String extension = "";
+            int dot = originalName.lastIndexOf('.');
+            if (dot > -1 && dot < originalName.length() - 1) {
+                extension = originalName.substring(dot);
+            }
+
+            Path proofDir = Path.of(uploadDir, "payment-proofs", String.valueOf(id)).toAbsolutePath().normalize();
+            Files.createDirectories(proofDir);
+
+            String storedName = "payment-proof-" + UUID.randomUUID() + extension;
+            Path target = proofDir.resolve(storedName).normalize();
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+
+            String relativePath = Path.of("payment-proofs", String.valueOf(id), storedName)
+                    .toString()
+                    .replace('\\', '/');
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("fileName", originalName);
+            out.put("filePath", relativePath);
+            out.put("fileType", StringUtils.hasText(file.getContentType()) ? file.getContentType() : "application/octet-stream");
+            out.put("fileSize", file.getSize());
+            return out;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to upload payment proof file");
+        }
     }
 
     public void deleteLead(Long id, String actorPrincipal) {
@@ -1070,6 +1327,18 @@ public class LeadService {
                     && Objects.equals(row.getPaymentOwnerId(), actor.getId())) {
                 return true;
             }
+            // budget verification: assigned employee can see the lead while verification is pending
+            if (row.getBudgetVerificationAssignedToUserId() != null
+                    && Objects.equals(row.getBudgetVerificationAssignedToUserId(), actor.getId())
+                    && "PENDING".equalsIgnoreCase(row.getBudgetVerificationStatus())) {
+                return true;
+            }
+            // payment verification: assigned employee can see the lead while verification is pending
+            if (row.getPaymentVerificationAssignedToUserId() != null
+                    && Objects.equals(row.getPaymentVerificationAssignedToUserId(), actor.getId())
+                    && "PENDING".equalsIgnoreCase(row.getPaymentVerificationStatus())) {
+                return true;
+            }
             return false;
         }
         if (row.getAssignedGroupId() != null) {
@@ -1088,7 +1357,20 @@ public class LeadService {
             return true;
         }
         if (actor.getRole() == Role.EMPLOYEE) {
-            return row.getOwnerUserId() != null && row.getOwnerUserId().equals(actor.getId());
+            if (row.getOwnerUserId() != null && row.getOwnerUserId().equals(actor.getId())) return true;
+            // budget-assigned employee can update budget verification fields while pending
+            if (row.getBudgetVerificationAssignedToUserId() != null
+                    && row.getBudgetVerificationAssignedToUserId().equals(actor.getId())
+                    && "PENDING".equalsIgnoreCase(row.getBudgetVerificationStatus())) {
+                return true;
+            }
+            // payment-assigned employee can update payment verification fields while pending
+            if (row.getPaymentVerificationAssignedToUserId() != null
+                    && row.getPaymentVerificationAssignedToUserId().equals(actor.getId())
+                    && "PENDING".equalsIgnoreCase(row.getPaymentVerificationStatus())) {
+                return true;
+            }
+            return false;
         }
         return false;
     }
@@ -1250,12 +1532,12 @@ public class LeadService {
 
     /**
      * Determine if we should save/restore the owner for a given status.
-     * Currently tracked: payment, design, production
+     * Currently tracked: deal, payment, design, production
      */
     private boolean shouldTrackOwnerForStatus(String status) {
         if (!StringUtils.hasText(status)) return false;
         String lower = status.trim().toLowerCase();
-        return lower.equals("payment") || lower.equals("design") || lower.equals("production");
+        return lower.equals("deal") || lower.equals("payment") || lower.equals("design") || lower.equals("production");
     }
 
     /**
@@ -1687,6 +1969,157 @@ public class LeadService {
             throw new AccessDeniedException("Your account is missing team scope configuration");
         }
     }
+        /**
+     * Assigns payment verification to the next user in round-robin rotation
+     * from the group that handles the current lead status via Flow configuration
+     */
+    private void assignPaymentVerificationRoundRobin(Lead lead) {
+        try {
+            if (lead == null) {
+                return;
+            }
+            
+            // Get flow configuration to find the group handling "Accounts" status
+            com.nexorcrm.backend.dto.LeadFlowResponse flowResponse = leadFlowService.getFlow();
+            List<Map<String, Object>> rules = flowResponse.getRules();
+            
+            if (rules == null || rules.isEmpty()) {
+                return; // No flow rules configured, skip assignment
+            }
+            
+            // Find the group assigned to the "Accounts" status in flow (case-insensitive)
+            Long handledByGroupId = null;
+            for (Map<String, Object> rule : rules) {
+                if (rule == null) continue;
+                Object statusVal = rule.get("status");
+                if (statusVal != null && statusVal.toString().trim().equalsIgnoreCase("Accounts")) {
+                    Object groupIdVal = rule.get("handledByGroupId");
+                    if (groupIdVal != null) {
+                        handledByGroupId = Long.parseLong(groupIdVal.toString());
+                        break;
+                    }
+                }
+            }
+            
+            if (handledByGroupId == null) {
+                return; // No group assigned to this status
+            }
+            
+            // Get all eligible members of the assigned group
+            List<UserGroupMember> eligibleMembers = userGroupMemberRepository
+                    .findByGroup_IdAndUser_RoleAndUser_ActivationStatusAndUser_ActiveTrueAndUser_IsDeletedFalseOrderByUserUsernameAsc(
+                            handledByGroupId,
+                            Role.EMPLOYEE,
+                            ActivationStatus.ACTIVE
+                    );
+            
+            if (eligibleMembers.isEmpty()) {
+                return; // No eligible members in group
+            }
+            
+            // Extract candidates
+            List<User> candidates = eligibleMembers.stream()
+                    .map(UserGroupMember::getUser)
+                    .filter(Objects::nonNull)
+                    .toList();
+            
+            List<Long> candidateIds = candidates.stream().map(User::getId).toList();
+            Set<Long> candidateIdSet = new HashSet<>(candidateIds);
+            
+            // Find the most recently assigned user in this group
+            Long lastAssignedUserId = leadRepository.findByDeletedFalseAndPaymentVerificationAssignedToUserIdIsNotNullOrderByUpdatedAtDesc()
+                    .stream()
+                    .map(Lead::getPaymentVerificationAssignedToUserId)
+                    .filter(Objects::nonNull)
+                    .filter(candidateIdSet::contains)
+                    .findFirst()
+                    .orElse(null);
+            
+            // Determine next user
+            User nextAssignedUser;
+            if (lastAssignedUserId == null) {
+                nextAssignedUser = candidates.get(0);
+            } else {
+                int currentIndex = -1;
+                for (int idx = 0; idx < candidates.size(); idx++) {
+                    if (Objects.equals(candidates.get(idx).getId(), lastAssignedUserId)) {
+                        currentIndex = idx;
+                        break;
+                    }
+                }
+                
+                if (currentIndex < 0) {
+                    nextAssignedUser = candidates.get(0);
+                } else {
+                    int nextIndex = (currentIndex + 1) % candidates.size();
+                    nextAssignedUser = candidates.get(nextIndex);
+                }
+            }
+            
+            lead.setPaymentVerificationAssignedToUserId(nextAssignedUser.getId());
+        } catch (Exception e) {
+            // Log and silently fail - don't break payment verification workflow
+            logger.warn("Failed to assign payment verification round-robin: " + e.getMessage(), e);
+        }
+    }
+
+    private void assignBudgetRoundRobin(Lead lead) {
+        try {
+            if (lead == null) return;
+            com.nexorcrm.backend.dto.LeadFlowResponse flowResponse = leadFlowService.getFlow();
+            List<Map<String, Object>> rules = flowResponse.getRules();
+            if (rules == null || rules.isEmpty()) return;
+
+            Long handledByGroupId = null;
+            for (Map<String, Object> rule : rules) {
+                if (rule == null) continue;
+                Object statusVal = rule.get("status");
+                if (statusVal != null && statusVal.toString().trim().equalsIgnoreCase("Budget")) {
+                    Object groupIdVal = rule.get("handledByGroupId");
+                    if (groupIdVal != null) {
+                        handledByGroupId = Long.parseLong(groupIdVal.toString());
+                        break;
+                    }
+                }
+            }
+            if (handledByGroupId == null) return;
+
+            List<UserGroupMember> eligibleMembers = userGroupMemberRepository
+                    .findByGroup_IdAndUser_RoleAndUser_ActivationStatusAndUser_ActiveTrueAndUser_IsDeletedFalseOrderByUserUsernameAsc(
+                            handledByGroupId, Role.EMPLOYEE, ActivationStatus.ACTIVE);
+            if (eligibleMembers.isEmpty()) return;
+
+            List<User> candidates = eligibleMembers.stream()
+                    .map(UserGroupMember::getUser).filter(Objects::nonNull).toList();
+            List<Long> candidateIds = candidates.stream().map(User::getId).toList();
+            Set<Long> candidateIdSet = new HashSet<>(candidateIds);
+
+            Long lastAssignedUserId = leadRepository
+                    .findByDeletedFalseAndBudgetVerificationAssignedToUserIdIsNotNullOrderByUpdatedAtDesc()
+                    .stream()
+                    .map(Lead::getBudgetVerificationAssignedToUserId)
+                    .filter(Objects::nonNull)
+                    .filter(candidateIdSet::contains)
+                    .findFirst().orElse(null);
+
+            User nextAssignedUser;
+            if (lastAssignedUserId == null) {
+                nextAssignedUser = candidates.get(0);
+            } else {
+                int currentIndex = -1;
+                for (int idx = 0; idx < candidates.size(); idx++) {
+                    if (Objects.equals(candidates.get(idx).getId(), lastAssignedUserId)) {
+                        currentIndex = idx; break;
+                    }
+                }
+                int nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % candidates.size();
+                nextAssignedUser = candidates.get(nextIndex);
+            }
+            lead.setBudgetVerificationAssignedToUserId(nextAssignedUser.getId());
+        } catch (Exception e) {
+            logger.warn("Failed to assign budget round-robin: " + e.getMessage(), e);
+        }
+    }
 
     private boolean hasLeadVisibility(UserGroup group) {
         String pageKeysCsv = group == null ? null : group.getPageKeysCsv();
@@ -1788,7 +2221,31 @@ public class LeadService {
         res.setRequirementFileType(row.getRequirementFileType());
         res.setRequirementFileSize(row.getRequirementFileSize());
         res.setRequirementNotes(row.getRequirementNotes());
+        // payment verification values
+        res.setPaymentProofFileName(row.getPaymentProofFileName());
+        res.setPaymentProofFilePath(row.getPaymentProofFilePath());
+        res.setPaymentProofNotes(row.getPaymentProofNotes());
+        res.setPaymentVerificationStatus(row.getPaymentVerificationStatus());
+        res.setPaymentVerificationRejectionReason(row.getPaymentVerificationRejectionReason());
+        // payment verification address IDs
+        res.setPaymentVerificationBillingAddressId(row.getPaymentVerificationBillingAddressId());
+        res.setPaymentVerificationShippingAddressId(row.getPaymentVerificationShippingAddressId());
+        res.setPaymentVerificationAssignedToUserId(row.getPaymentVerificationAssignedToUserId());
+        res.setPaymentVerificationAssignedToUserName(userNameMap.get(row.getPaymentVerificationAssignedToUserId()));
+        res.setPaymentVerificationAmount(row.getPaymentVerificationAmount());
         res.setCreatedAt(row.getCreatedAt());
+        // payment details & invoice
+        res.setPaymentNotes(row.getPaymentNotes());
+        res.setRejectionNotes(row.getRejectionNotes());
+        res.setInvoiceData(row.getInvoiceData());
+        res.setPaymentVerifiedInvoiceData(row.getPaymentVerifiedInvoiceData());
+        res.setInvoiceCgstPercent(row.getInvoiceCgstPercent());
+        res.setInvoiceSgstPercent(row.getInvoiceSgstPercent());
+        // budget verification
+        res.setBudgetVerificationStatus(row.getBudgetVerificationStatus());
+        res.setBudgetVerificationAssignedToUserId(row.getBudgetVerificationAssignedToUserId());
+        res.setBudgetVerificationAssignedToUserName(userNameMap.get(row.getBudgetVerificationAssignedToUserId()));
+        res.setBudgetVerificationRejectionReason(row.getBudgetVerificationRejectionReason());
         return res;
     }
 
@@ -1893,6 +2350,9 @@ public class LeadService {
             if (lead.getOwnerUserId() != null) {
                 ids.add(lead.getOwnerUserId());
             }
+            if (lead.getPaymentVerificationAssignedToUserId() != null) {
+                ids.add(lead.getPaymentVerificationAssignedToUserId());
+            }
         }
         if (ids.isEmpty()) {
             return out;
@@ -1900,7 +2360,10 @@ public class LeadService {
 
         userRepository.findAllById(ids).forEach(user -> {
             if (!user.isDeleted()) {
-                out.put(user.getId(), user.getUsername());
+                String displayName = StringUtils.hasText(user.getUsername())
+                        ? user.getUsername()
+                        : (StringUtils.hasText(user.getEmail()) ? user.getEmail() : resolveOwnerName(user));
+                out.put(user.getId(), displayName);
             }
         });
         return out;

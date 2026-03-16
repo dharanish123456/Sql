@@ -276,6 +276,14 @@
     component: "DealsPage",
   },
   {
+    path: "deal/:id",
+    component: "DealEditPage",
+  },
+  {
+    path: "deal/:id/chat",
+    component: "LeadChatPage",
+  },
+  {
     path: "departments",
     component: "DepartmentsPage",
   },
@@ -719,6 +727,26 @@
   {
     path: "payment-report",
     component: "PaymentReportPage",
+  },
+  {
+    path: "payment-verifications/:leadId/approve",
+    component: "PaymentVerificationApprovePage",
+  },
+  {
+    path: "payment-verifications/:leadId",
+    component: "PaymentVerificationDetailsPage",
+  },
+  {
+    path: "payment-verifications",
+    component: "PaymentVerificationsPage",
+  },
+  {
+    path: "budget-verifications/:leadId/calculate",
+    component: "BudgetVerificationApprovePage",
+  },
+  {
+    path: "budget-verifications",
+    component: "BudgetVerificationsPage",
   },
   {
     path: "payments",

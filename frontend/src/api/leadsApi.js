@@ -101,6 +101,29 @@ export async function updateLeadDetails(leadId, payload = {}) {
   return response?.data || {}
 }
 
+export async function uploadLeadPaymentProof(leadId, file) {
+  const formData = new FormData()
+  formData.append("file", file)
+  const response = await api.post(`/api/v1/leads/${leadId}/payment-proof`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
+  return response?.data || {}
+}
+
+export async function getLeadInvoiceItems(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/invoice-items`)
+  return Array.isArray(response?.data) ? response.data : []
+}
+
+export async function saveLeadInvoiceItems(leadId, items, cgstPercent, sgstPercent) {
+  const response = await api.post(`/api/v1/leads/${leadId}/invoice-items`, {
+    items,
+    cgstPercent: cgstPercent ?? 0,
+    sgstPercent: sgstPercent ?? 0,
+  })
+  return Array.isArray(response?.data) ? response.data : []
+}
+
 export async function deleteLead(leadId) {
   const response = await api.patch(`/api/v1/leads/${leadId}/delete`)
   return response?.data || {}
@@ -161,5 +184,54 @@ export async function recordLeadPayment(leadId, { amount, type }) {
 
 export async function getLeadPaymentSummary(leadId) {
   const response = await api.get(`/api/v1/leads/${leadId}/payment`)
+  return response?.data || {}
+}
+
+export async function downloadLeadRequirementFile(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/requirement-file`, {
+    responseType: "blob",
+  })
+  return {
+    blob: response?.data || null,
+    contentDisposition: response?.headers?.["content-disposition"] || "",
+  }
+}
+
+export async function downloadLeadPaymentProofFile(leadId) {
+  const response = await api.get(`/api/v1/leads/${leadId}/payment-proof-file`, {
+    responseType: "blob",
+  })
+  return {
+    blob: response?.data || null,
+    contentDisposition: response?.headers?.["content-disposition"] || "",
+  }
+}
+
+export async function rejectBudgetVerification(leadId, rejectionReason) {
+  const response = await api.patch(`/api/v1/leads/${leadId}/details`, {
+    budgetVerificationStatus: "REJECTED",
+    budgetVerificationRejectionReason: rejectionReason,
+  })
+  return response?.data || {}
+}
+
+export async function approveBudgetVerification(leadId, items, totals, cgstPercent, sgstPercent, invoiceDataJson) {
+  const mappedItems = items.map(it => ({
+    description: it.description,
+    hsn: it.hsn || "",
+    quantity: Number(it.quantity) || 0,
+    unitPrice: Number(it.unitPrice) || 0,
+  }))
+  await api.post(`/api/v1/leads/${leadId}/invoice-items`, {
+    items: mappedItems,
+    cgstPercent: cgstPercent ?? 0,
+    sgstPercent: sgstPercent ?? 0,
+  })
+  const response = await api.patch(`/api/v1/leads/${leadId}/details`, {
+    budgetVerificationStatus: "APPROVED",
+    invoiceData: invoiceDataJson,
+    invoiceCgstPercent: cgstPercent ?? 0,
+    invoiceSgstPercent: sgstPercent ?? 0,
+  })
   return response?.data || {}
 }

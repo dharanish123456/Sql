@@ -778,6 +778,21 @@ export default function Sidebar() {
                       </li>
                     </ul>
                   </li>
+                  <li className="submenu">
+                    <a href="javascript:void(0);" className="">
+                      <i className="ti ti-wallet"></i>
+                      <span>Accounts</span>
+                      <span className="menu-arrow"></span>
+                    </a>
+                    <ul>
+                      <li>
+                        <Link to="/payment-verifications">Payment Verifications</Link>
+                      </li>
+                      <li>
+                        <Link to="/budget-verifications">Budget Verifications</Link>
+                      </li>
+                    </ul>
+                  </li>
                 </ul>
               </li>
               <li className="menu-title">

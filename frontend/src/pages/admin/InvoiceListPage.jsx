@@ -798,4 +798,7 @@ const InvoiceListPage = () => {
 			</div>
 			{/* /Delete Modal */}
 
-    </>
+    </>  );
+};
+
+export default InvoiceListPage;

@@ -30,10 +30,19 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.core.io.Resource;
+import org.springframework.util.StringUtils;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @RestController
@@ -133,6 +142,13 @@ public class LeadController {
                                       @RequestBody LeadUpdateDetailsRequest request,
                                       Authentication authentication) {
         return leadService.updateDetails(id, request, authentication.getName());
+    }
+
+    @PostMapping(value = "/{id}/payment-proof", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> uploadPaymentProof(@PathVariable("id") Long id,
+                                                  @RequestParam("file") MultipartFile file,
+                                                  Authentication authentication) {
+        return leadService.uploadPaymentProof(id, file, authentication.getName());
     }
 
     @GetMapping("/{id}/chat/messages")
@@ -241,5 +257,169 @@ public class LeadController {
                 .contentType(mediaType)
                 .header("Content-Disposition", disposition + "; filename=\"" + filename + "\"")
                 .body(resource);
+    }
+
+    @GetMapping("/{id}/requirement-file")
+    public ResponseEntity<Resource> downloadRequirementFile(@PathVariable("id") Long id,
+                                                            Authentication authentication) {
+        LeadResponse lead = leadService.getById(id, authentication.getName());
+        ResponseEntity<Resource> chatAttachmentResponse = tryBuildChatAttachmentResponse(
+            id,
+            lead.getRequirementFilePath(),
+            authentication
+        );
+        if (chatAttachmentResponse != null) {
+            return chatAttachmentResponse;
+        }
+        return buildLeadFileDownloadResponse(
+                lead.getRequirementFilePath(),
+                lead.getRequirementFileName(),
+                "Requirement file not found"
+        );
+    }
+
+    @GetMapping("/{id}/payment-proof-file")
+    public ResponseEntity<Resource> downloadPaymentProofFile(@PathVariable("id") Long id,
+                                                             Authentication authentication) {
+        LeadResponse lead = leadService.getById(id, authentication.getName());
+        return buildLeadFileDownloadResponse(
+                lead.getPaymentProofFilePath(),
+                lead.getPaymentProofFileName(),
+                "Payment proof file not found"
+        );
+    }
+
+    private ResponseEntity<Resource> buildLeadFileDownloadResponse(String storedPath,
+                                                                   String storedFileName,
+                                                                   String notFoundMessage) {
+        Path resolvedPath = resolveStoredFilePath(storedPath, storedFileName);
+        Resource resource = new org.springframework.core.io.FileSystemResource(resolvedPath.toFile());
+        if (!resource.exists() || !resource.isReadable()) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, notFoundMessage);
+        }
+
+        String downloadName = StringUtils.hasText(storedFileName)
+                ? storedFileName.replace("\"", "")
+                : resolvedPath.getFileName().toString().replace("\"", "");
+
+        MediaType mediaType = MediaTypeFactory.getMediaType(downloadName)
+                .or(() -> MediaTypeFactory.getMediaType(resolvedPath.getFileName().toString()))
+                .orElse(MediaType.APPLICATION_OCTET_STREAM);
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header("Content-Disposition", "attachment; filename=\"" + downloadName + "\"")
+                .body(resource);
+    }
+
+    private ResponseEntity<Resource> tryBuildChatAttachmentResponse(Long leadId,
+                                                                    String storedPath,
+                                                                    Authentication authentication) {
+        Long messageId = extractChatMessageId(storedPath);
+        if (messageId == null) {
+            return null;
+        }
+        return getChatAttachment(leadId, messageId, authentication);
+    }
+
+    private Long extractChatMessageId(String storedPath) {
+        if (!StringUtils.hasText(storedPath)) {
+            return null;
+        }
+
+        String decoded = URLDecoder.decode(storedPath.trim(), StandardCharsets.UTF_8);
+        String normalized = decoded.replace('\\', '/');
+        String[] segments = normalized.split("/");
+        for (int index = 0; index < segments.length - 1; index++) {
+            if (!"messages".equalsIgnoreCase(segments[index])) {
+                continue;
+            }
+            String candidate = segments[index + 1];
+            try {
+                return Long.valueOf(candidate);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Path resolveStoredFilePath(String storedPath, String storedFileName) {
+        if (!StringUtils.hasText(storedPath) && !StringUtils.hasText(storedFileName)) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+        }
+
+        if (StringUtils.hasText(storedPath)) {
+            String raw = storedPath.replace('\\', '/').trim();
+            String normalized = raw;
+            if (normalized.contains("/uploads/")) {
+                normalized = normalized.substring(normalized.indexOf("/uploads/") + "/uploads/".length());
+            }
+            normalized = normalized.replaceFirst("^uploads/", "").replaceFirst("^/+", "");
+
+            Optional<Path> direct = tryResolveExistingPath(raw);
+            if (direct.isPresent()) {
+                return direct.get();
+            }
+
+            Optional<Path> uploadsRelative = tryResolveExistingPath(Paths.get("uploads", normalized).toString());
+            if (uploadsRelative.isPresent()) {
+                return uploadsRelative.get();
+            }
+
+            int slash = normalized.lastIndexOf('/');
+            if (slash >= 0 && slash < normalized.length() - 1) {
+                Optional<Path> byFileNameOnly = tryResolveExistingPath(
+                        Paths.get("uploads", normalized.substring(slash + 1)).toString()
+                );
+                if (byFileNameOnly.isPresent()) {
+                    return byFileNameOnly.get();
+                }
+            }
+        }
+
+        if (StringUtils.hasText(storedFileName)) {
+            Optional<Path> byName = tryResolveExistingPath(Paths.get("uploads", storedFileName).toString());
+            if (byName.isPresent()) {
+                return byName.get();
+            }
+        }
+
+        throw new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+    }
+
+    private Optional<Path> tryResolveExistingPath(String rawPath) {
+        if (!StringUtils.hasText(rawPath)) {
+            return Optional.empty();
+        }
+        try {
+            Path path = Paths.get(rawPath).normalize();
+            if (path.toFile().exists()) {
+                return Optional.of(path);
+            }
+            return Optional.empty();
+        } catch (InvalidPathException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    @GetMapping("/{id}/invoice-items")
+    public List<com.nexorcrm.backend.entity.LeadInvoiceItem> getInvoiceItems(
+            @PathVariable("id") Long id, Authentication authentication) {
+        return leadService.getInvoiceItems(id, authentication.getName());
+    }
+
+    @PostMapping("/{id}/invoice-items")
+    public List<com.nexorcrm.backend.entity.LeadInvoiceItem> saveInvoiceItems(
+            @PathVariable("id") Long id,
+            @RequestBody Map<String, Object> body,
+            Authentication authentication) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+        java.math.BigDecimal cgst = body.get("cgstPercent") != null
+                ? new java.math.BigDecimal(String.valueOf(body.get("cgstPercent"))) : null;
+        java.math.BigDecimal sgst = body.get("sgstPercent") != null
+                ? new java.math.BigDecimal(String.valueOf(body.get("sgstPercent"))) : null;
+        return leadService.saveInvoiceItems(id, items, cgst, sgst, authentication.getName());
     }
 }

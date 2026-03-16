@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface LeadStatusRepository extends JpaRepository<LeadStatus, Long> {
     List<LeadStatus> findByDeletedFalseOrderByCreatedAtDesc();
     Optional<LeadStatus> findByIdAndDeletedFalse(Long id);
+    Optional<LeadStatus> findByStatusNameIgnoreCase(String statusName);
     boolean existsByStatusNameIgnoreCaseAndDeletedFalse(String statusName);
     boolean existsByStatusNameIgnoreCaseAndDeletedFalseAndIdNot(String statusName, Long id);
 }

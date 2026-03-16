@@ -1,5 +1,6 @@
 export const LEAD_FLOW_STATUSES = [
   "New Lead",
+  "Deal",
   "Attempted",
   "Interested",
   "Design",
@@ -7,7 +8,7 @@ export const LEAD_FLOW_STATUSES = [
   "Allocate",
   "Production",
   "Stock Requested",
-  // "Accounts", removed – use Accounts Review instead
+  "Accounts",
   "Accounts Review",
   "Approval",
   "Purchase",

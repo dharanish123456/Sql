@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link } from 'react-router-dom';
 
 const LeaveTypePage = () => {
@@ -248,31 +248,6 @@ const LeaveTypePage = () => {
 		
 
 		
-		<div className="modal fade" id="delete_modal">
-			<div className="modal-dialog modal-dialog-centered">
-				<div className="modal-content">
-					<div className="modal-body text-center">
-						<span className="avatar avatar-xl bg-transparent-danger text-danger mb-3">
-							<i className="ti ti-trash-x fs-36"></i>
-						</span>
-						<h4 className="mb-1">Confirm Delete</h4>
-						<p className="mb-3">You want to delete all the marked items, this cant be undone once you delete.</p>
-						<div className="d-flex justify-content-center">
-							<a href="javascript:void(0);" className="btn btn-light me-3" data-bs-dismiss="modal">Cancel</a>
-							<a href="/leave-type" className="btn btn-danger">Yes, Delete</a>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-		
-
-	</div>
-	
-
-	
-
-
     </>
   );
 };

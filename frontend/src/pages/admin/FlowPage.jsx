@@ -82,14 +82,22 @@ export default function FlowPage() {
         if (!active) return;
         setGroups(Array.isArray(groupRows) ? groupRows : []);
         const loadedRules = Array.isArray(flow?.rules) ? flow.rules : [];
+
+        // Collect ALL statuses: base list + top-level rule statuses + any statuses referenced in "next"
+        const nextStatuses = loadedRules.flatMap((rule) =>
+          rule?.next && typeof rule.next === "object"
+            ? Object.keys(rule.next).map((k) => String(k || "").trim()).filter(Boolean)
+            : [],
+        );
+
         const knownStatuses = Array.from(
           new Set([
             ...LEAD_FLOW_STATUSES,
             ...loadedRules.map((rule) => String(rule?.status || "").trim()).filter(Boolean),
+            ...nextStatuses,
           ]),
         )
-        // drop the old "Accounts" entry if it survives in stored rules
-        .filter((s) => String(s || "").trim().toLowerCase() !== "accounts");
+        ;
         const fallbackGroupId = flow?.defaultGroupId
           ? String(flow.defaultGroupId)
           : groupRows && groupRows.length
@@ -158,7 +166,7 @@ export default function FlowPage() {
   const selectedNextStatuses = (rule) =>
     rule?.next && typeof rule.next === "object" ? Object.keys(rule.next) : [];
 
-  const handleAddStatus = () => {
+  const handleAddStatus = async () => {
     const trimmedName = newStatusName.trim();
     if (!trimmedName) {
       alert("Status name cannot be empty");
@@ -173,13 +181,38 @@ export default function FlowPage() {
       handledByGroupId: defaultGroupId || "",
       next: {},
     };
-    setRules((prev) => [...prev, newRule]);
+    
+    // Update local state
+    const updatedRules = [...rules, newRule];
+    setRules(updatedRules);
     setNewStatusName("");
     setShowAddModal(false);
-    showSuccess("Status added", { title: "Flow" });
+    
+    // Auto-save to backend
+    setSaving(true);
+    try {
+      const payload = {
+        defaultGroupId: defaultGroupId ? Number(defaultGroupId) : null,
+        rules: updatedRules.map((rule) => ({
+          status: rule.status,
+          handledByGroupId: rule.handledByGroupId
+            ? Number(rule.handledByGroupId)
+            : null,
+          next: rule.next || {},
+        })),
+      };
+      await updateLeadFlow(payload);
+      showSuccess("Status added and saved", { title: "Flow" });
+    } catch (e) {
+      const message = extractApiErrorMessage(e, "Failed to save new status");
+      setError(message);
+      showError(message, { title: "Flow" });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleEditStatus = () => {
+  const handleEditStatus = async () => {
     if (!editingStatus) return;
     const trimmedName = editingStatusName.trim();
     if (!trimmedName) {
@@ -192,31 +225,79 @@ export default function FlowPage() {
       alert("Status name already exists");
       return;
     }
-    setRules((prev) =>
-      prev.map((rule) =>
-        rule.status === editingStatus
-          ? { 
-              ...rule, 
-              status: trimmedName
-            }
-          : rule,
-      ),
+    
+    const updatedRules = rules.map((rule) =>
+      rule.status === editingStatus
+        ? { 
+            ...rule, 
+            status: trimmedName
+          }
+        : rule,
     );
+    
+    setRules(updatedRules);
     setEditingStatus(null);
     setEditingGroupId("");
     setEditingStatusName("");
     setShowEditModal(false);
-    showSuccess("Status updated", { title: "Flow" });
+    
+    // Auto-save to backend
+    setSaving(true);
+    try {
+      const payload = {
+        defaultGroupId: defaultGroupId ? Number(defaultGroupId) : null,
+        rules: updatedRules.map((rule) => ({
+          status: rule.status,
+          handledByGroupId: rule.handledByGroupId
+            ? Number(rule.handledByGroupId)
+            : null,
+          next: rule.next || {},
+        })),
+      };
+      await updateLeadFlow(payload);
+      showSuccess("Status updated", { title: "Flow" });
+    } catch (e) {
+      const message = extractApiErrorMessage(e, "Failed to update status");
+      setError(message);
+      showError(message, { title: "Flow" });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteStatus = () => {
+  const handleDeleteStatus = async () => {
     if (!editingStatus) return;
-    setRules((prev) => prev.filter((rule) => rule.status !== editingStatus));
+    
+    const updatedRules = rules.filter((rule) => rule.status !== editingStatus);
+    
+    setRules(updatedRules);
     setEditingStatus(null);
     setEditingStatusName("");
     setEditingGroupId("");
     setShowDeleteModal(false);
-    showSuccess("Status deleted", { title: "Flow" });
+    
+    // Auto-save to backend
+    setSaving(true);
+    try {
+      const payload = {
+        defaultGroupId: defaultGroupId ? Number(defaultGroupId) : null,
+        rules: updatedRules.map((rule) => ({
+          status: rule.status,
+          handledByGroupId: rule.handledByGroupId
+            ? Number(rule.handledByGroupId)
+            : null,
+          next: rule.next || {},
+        })),
+      };
+      await updateLeadFlow(payload);
+      showSuccess("Status deleted", { title: "Flow" });
+    } catch (e) {
+      const message = extractApiErrorMessage(e, "Failed to delete status");
+      setError(message);
+      showError(message, { title: "Flow" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openEditModal = (status) => {
